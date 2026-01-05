@@ -495,6 +495,27 @@ function MonitoresContent() {
                     <RefreshCw className="h-4 w-4" />
                   )}
                 </Button>
+
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8"
+                  aria-label={`Editar ${monitor.name}`}
+                  onClick={() => openEditDialog(monitor)}
+                >
+                  <Edit className="h-4 w-4" />
+                </Button>
+
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8 text-destructive hover:text-destructive"
+                  aria-label={`Excluir ${monitor.name}`}
+                  onClick={() => deleteMonitor(monitor.id)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="icon" className="h-8 w-8">
