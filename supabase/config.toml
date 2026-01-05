@@ -2,3 +2,6 @@ project_id = "niklyxbgbtwagztsxrbw"
 
 [functions.scrape-ad-library]
 verify_jwt = false
+
+[functions.scheduler-hourly]
+verify_jwt = false

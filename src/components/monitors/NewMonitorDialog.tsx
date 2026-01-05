@@ -213,8 +213,24 @@ export function NewMonitorDialog({ open, onOpenChange, onSuccess, existingTags }
 
       toast({
         title: "Monitor criado!",
-        description: `"${name}" foi adicionado com sucesso`,
+        description: `"${name}" foi adicionado. Iniciando primeira leitura...`,
       });
+
+      // Trigger first reading immediately
+      if (monitor) {
+        supabase.functions.invoke('scrape-ad-library', {
+          body: { monitor_id: monitor.id, url: url.trim() },
+        }).then(({ data, error }) => {
+          if (error) {
+            console.error('First scrape failed:', error);
+          } else if (data?.success) {
+            toast({
+              title: "Primeira leitura concluída!",
+              description: `${data.ads_count.toLocaleString('pt-BR')} anúncios ativos encontrados`,
+            });
+          }
+        });
+      }
 
       onOpenChange(false);
       onSuccess?.();
