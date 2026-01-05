@@ -15,6 +15,7 @@ import {
   Edit,
   Clock,
   Loader2,
+  RefreshCw,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -62,6 +63,7 @@ function MonitoresContent() {
   const [tags, setTags] = useState<Tag[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [scrapingMonitors, setScrapingMonitors] = useState<Set<string>>(new Set());
 
   const fetchMonitors = async () => {
     if (!user) return;
@@ -195,6 +197,45 @@ function MonitoresContent() {
         title: "Erro ao excluir monitor",
         description: error.message,
         variant: "destructive",
+      });
+    }
+  };
+
+  const scrapeMonitor = async (monitorId: string, url: string, name: string) => {
+    setScrapingMonitors(prev => new Set(prev).add(monitorId));
+
+    try {
+      const { data, error } = await supabase.functions.invoke('scrape-ad-library', {
+        body: { monitor_id: monitorId, url },
+      });
+
+      if (error) throw error;
+
+      if (data.success) {
+        toast({
+          title: "Coleta realizada!",
+          description: `${name}: ${data.ads_count.toLocaleString('pt-BR')} anúncios ativos`,
+        });
+        // Refresh monitors to show updated reading
+        fetchMonitors();
+      } else {
+        toast({
+          title: "Coleta com problemas",
+          description: data.error || "Não foi possível extrair o número de anúncios",
+          variant: "destructive",
+        });
+      }
+    } catch (error: any) {
+      toast({
+        title: "Erro na coleta",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setScrapingMonitors(prev => {
+        const next = new Set(prev);
+        next.delete(monitorId);
+        return next;
       });
     }
   };
@@ -342,6 +383,19 @@ function MonitoresContent() {
                     </p>
                   )}
                 </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => scrapeMonitor(monitor.id, monitor.ad_library_url, monitor.name)}
+                  disabled={scrapingMonitors.has(monitor.id)}
+                  className="h-8"
+                >
+                  {scrapingMonitors.has(monitor.id) ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                </Button>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -349,6 +403,13 @@ function MonitoresContent() {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-48">
+                    <DropdownMenuItem
+                      onClick={() => scrapeMonitor(monitor.id, monitor.ad_library_url, monitor.name)}
+                      disabled={scrapingMonitors.has(monitor.id)}
+                    >
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                      Coletar Agora
+                    </DropdownMenuItem>
                     <DropdownMenuItem>
                       <Edit className="h-4 w-4 mr-2" />
                       Editar
