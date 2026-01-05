@@ -5,21 +5,37 @@ import { MonitorStatusCard } from "@/components/dashboard/MonitorStatusCard";
 import { ActiveAdsLineChart } from "@/components/charts/ActiveAdsLineChart";
 import { RecentReadingsTable } from "@/components/dashboard/RecentReadingsTable";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
-import { Radio, TrendingUp, Activity, AlertTriangle, Loader2 } from "lucide-react";
+import { Radio, TrendingUp, Activity, AlertTriangle, Loader2, Filter, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
 
 interface MonitorWithData {
   id: string;
   name: string;
   ad_library_url: string;
   is_active: boolean;
+  group_id: string | null;
+  group_name?: string;
   tags: Array<{ name: string; type: 'nicho' | 'idioma' | 'pais' | 'custom' }>;
   latest_reading?: {
     ads_active_count: number;
     timestamp: string;
     status: string;
   };
+}
+
+interface Group {
+  id: string;
+  name: string;
+  color: string;
 }
 
 interface Reading {
@@ -35,8 +51,11 @@ function DashboardContent() {
   const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [monitors, setMonitors] = useState<MonitorWithData[]>([]);
+  const [groups, setGroups] = useState<Group[]>([]);
   const [readings, setReadings] = useState<Reading[]>([]);
   const [chartData, setChartData] = useState<{ time: string; value: number }[]>([]);
+  const [selectedMonitorId, setSelectedMonitorId] = useState<string | null>(null);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [stats, setStats] = useState({
     activeMonitors: 0,
     totalMonitors: 0,
@@ -50,6 +69,21 @@ function DashboardContent() {
       if (!user) return;
 
       try {
+        // Fetch groups
+        const { data: groupsData } = await supabase
+          .from('groups')
+          .select('id, name, color')
+          .eq('user_id', user.id)
+          .order('name');
+
+        setGroups(groupsData || []);
+
+        // Create groups map
+        const groupsMap: Record<string, { name: string; color: string }> = {};
+        (groupsData || []).forEach(g => {
+          groupsMap[g.id] = { name: g.name, color: g.color };
+        });
+
         // Fetch monitors with tags
         const { data: monitorsData } = await supabase
           .from('monitors')
@@ -93,6 +127,8 @@ function DashboardContent() {
           name: m.name,
           ad_library_url: m.ad_library_url,
           is_active: m.is_active,
+          group_id: m.group_id,
+          group_name: m.group_id ? groupsMap[m.group_id]?.name : undefined,
           tags: m.monitor_tags?.map((mt: any) => mt.tags).filter(Boolean) || [],
           latest_reading: readingsMap[m.id] ? {
             ads_active_count: readingsMap[m.id].ads_active_count,
@@ -176,6 +212,28 @@ function DashboardContent() {
     return `há ${Math.floor(hours / 24)}d`;
   };
 
+  // Filter monitors based on selection
+  const filteredMonitors = monitors.filter(m => {
+    if (selectedMonitorId) return m.id === selectedMonitorId;
+    if (selectedGroupId) return m.group_id === selectedGroupId;
+    return true;
+  });
+
+  // Get filtered stats
+  const filteredStats = {
+    activeMonitors: filteredMonitors.filter(m => m.is_active).length,
+    totalMonitors: filteredMonitors.length,
+    totalAds: filteredMonitors.reduce((sum, m) => sum + (m.latest_reading?.ads_active_count || 0), 0),
+  };
+
+  const selectedMonitor = selectedMonitorId ? monitors.find(m => m.id === selectedMonitorId) : null;
+  const selectedGroup = selectedGroupId ? groups.find(g => g.id === selectedGroupId) : null;
+
+  const clearFilters = () => {
+    setSelectedMonitorId(null);
+    setSelectedGroupId(null);
+  };
+
   if (isLoading) {
     return (
       <AppLayout>
@@ -189,25 +247,84 @@ function DashboardContent() {
   return (
     <AppLayout>
       <div className="space-y-6 fade-in">
-        {/* Header */}
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
-          <p className="text-muted-foreground mt-1">
-            Visão geral dos seus monitores de anúncios
-          </p>
+        {/* Header with Filters */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
+            <p className="text-muted-foreground mt-1">
+              {selectedMonitor
+                ? `Dados de: ${selectedMonitor.name}`
+                : selectedGroup
+                ? `Grupo: ${selectedGroup.name}`
+                : 'Visão geral dos seus monitores de anúncios'}
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <Select
+              value={selectedGroupId || "all-groups"}
+              onValueChange={(value) => {
+                if (value === "all-groups") {
+                  setSelectedGroupId(null);
+                } else {
+                  setSelectedGroupId(value);
+                  setSelectedMonitorId(null);
+                }
+              }}
+            >
+              <SelectTrigger className="w-[160px] bg-card border-border">
+                <SelectValue placeholder="Grupo" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all-groups">Todos os grupos</SelectItem>
+                {groups.map(group => (
+                  <SelectItem key={group.id} value={group.id}>
+                    {group.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select
+              value={selectedMonitorId || "all-monitors"}
+              onValueChange={(value) => {
+                if (value === "all-monitors") {
+                  setSelectedMonitorId(null);
+                } else {
+                  setSelectedMonitorId(value);
+                  setSelectedGroupId(null);
+                }
+              }}
+            >
+              <SelectTrigger className="w-[180px] bg-card border-border">
+                <SelectValue placeholder="Monitor" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all-monitors">Todos os monitores</SelectItem>
+                {monitors.map(monitor => (
+                  <SelectItem key={monitor.id} value={monitor.id}>
+                    {monitor.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {(selectedMonitorId || selectedGroupId) && (
+              <Button variant="ghost" size="icon" onClick={clearFilters}>
+                <X className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
         </div>
 
         {/* Metric Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <MetricCard
             title="Monitores Ativos"
-            value={stats.activeMonitors.toString()}
-            subtitle={`de ${stats.totalMonitors} totais`}
+            value={filteredStats.activeMonitors.toString()}
+            subtitle={`de ${filteredStats.totalMonitors} totais`}
             icon={<Radio className="h-5 w-5" />}
           />
           <MetricCard
             title="Total de Anúncios"
-            value={stats.totalAds.toLocaleString('pt-BR')}
+            value={filteredStats.totalAds.toLocaleString('pt-BR')}
             icon={<TrendingUp className="h-5 w-5" />}
           />
           <MetricCard
@@ -228,7 +345,11 @@ function DashboardContent() {
         {chartData.length > 0 ? (
           <ActiveAdsLineChart
             data={chartData}
-            title="Anúncios Ativos - Últimas 24 horas"
+            title={selectedMonitor 
+              ? `Anúncios Ativos - ${selectedMonitor.name}` 
+              : selectedGroup
+              ? `Anúncios Ativos - Grupo ${selectedGroup.name}`
+              : "Anúncios Ativos - Últimas 24 horas"}
           />
         ) : (
           <div className="metric-card flex items-center justify-center h-[300px]">
@@ -239,23 +360,29 @@ function DashboardContent() {
         )}
 
         {/* Monitor Status Cards */}
-        {monitors.length > 0 && (
+        {filteredMonitors.length > 0 && (
           <div>
             <h2 className="text-lg font-semibold text-foreground mb-4">
               Status dos Monitores
+              {selectedGroup && <span className="text-muted-foreground font-normal ml-2">({selectedGroup.name})</span>}
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-              {monitors.slice(0, 4).map((monitor) => (
-                <MonitorStatusCard
+              {filteredMonitors.slice(0, 8).map((monitor) => (
+                <div
                   key={monitor.id}
-                  name={monitor.name}
-                  url={monitor.ad_library_url}
-                  currentCount={monitor.latest_reading?.ads_active_count || 0}
-                  lastReading={monitor.latest_reading ? getTimeAgo(monitor.latest_reading.timestamp) : 'Sem leitura'}
-                  trend={0}
-                  tags={monitor.tags}
-                  status={monitor.is_active ? 'active' : 'inactive'}
-                />
+                  className="cursor-pointer"
+                  onClick={() => setSelectedMonitorId(monitor.id)}
+                >
+                  <MonitorStatusCard
+                    name={monitor.name}
+                    url={monitor.ad_library_url}
+                    currentCount={monitor.latest_reading?.ads_active_count || 0}
+                    lastReading={monitor.latest_reading ? getTimeAgo(monitor.latest_reading.timestamp) : 'Sem leitura'}
+                    trend={0}
+                    tags={monitor.tags}
+                    status={monitor.is_active ? 'active' : 'inactive'}
+                  />
+                </div>
               ))}
             </div>
           </div>

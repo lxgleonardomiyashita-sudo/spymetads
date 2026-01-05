@@ -24,11 +24,18 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { z } from "zod";
 
+interface Group {
+  id: string;
+  name: string;
+  color: string;
+}
+
 interface NewMonitorDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess?: () => void;
   existingTags: Array<{ id: string; name: string; type: 'nicho' | 'idioma' | 'pais' | 'custom' }>;
+  existingGroups: Group[];
 }
 
 const monitorSchema = z.object({
@@ -63,7 +70,7 @@ const INTERVALS = [
   { value: 60, label: 'A cada 60 minutos' },
 ];
 
-export function NewMonitorDialog({ open, onOpenChange, onSuccess, existingTags }: NewMonitorDialogProps) {
+export function NewMonitorDialog({ open, onOpenChange, onSuccess, existingTags, existingGroups }: NewMonitorDialogProps) {
   const { user } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -74,6 +81,7 @@ export function NewMonitorDialog({ open, onOpenChange, onSuccess, existingTags }
   const [selectedDays, setSelectedDays] = useState<string[]>(DAYS.map(d => d.value));
   const [selectedWindows, setSelectedWindows] = useState<string[]>(WINDOWS.map(w => w.value));
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [newTagName, setNewTagName] = useState("");
   const [newTagType, setNewTagType] = useState<'nicho' | 'idioma' | 'pais' | 'custom'>('nicho');
   const [isLoading, setIsLoading] = useState(false);
@@ -184,6 +192,7 @@ export function NewMonitorDialog({ open, onOpenChange, onSuccess, existingTags }
           user_id: user.id,
           name: name.trim(),
           ad_library_url: url.trim(),
+          group_id: selectedGroupId,
           schedule_config: {
             interval,
             days: selectedDays,
@@ -242,6 +251,7 @@ export function NewMonitorDialog({ open, onOpenChange, onSuccess, existingTags }
       setSelectedDays(DAYS.map(d => d.value));
       setSelectedWindows(WINDOWS.map(w => w.value));
       setSelectedTags([]);
+      setSelectedGroupId(null);
     } catch (error: any) {
       toast({
         title: "Erro ao criar monitor",
@@ -298,6 +308,35 @@ export function NewMonitorDialog({ open, onOpenChange, onSuccess, existingTags }
               Cole o link completo da pesquisa na Biblioteca de Anúncios do Meta
             </p>
           </div>
+
+          {/* Group */}
+          {existingGroups.length > 0 && (
+            <div className="space-y-2">
+              <Label className="text-foreground">Grupo (opcional)</Label>
+              <Select
+                value={selectedGroupId || "no-group"}
+                onValueChange={(v) => setSelectedGroupId(v === "no-group" ? null : v)}
+              >
+                <SelectTrigger className="bg-muted border-border">
+                  <SelectValue placeholder="Selecione um grupo" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="no-group">Sem grupo</SelectItem>
+                  {existingGroups.map((group) => (
+                    <SelectItem key={group.id} value={group.id}>
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="w-3 h-3 rounded-full"
+                          style={{ backgroundColor: group.color }}
+                        />
+                        {group.name}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           {/* Schedule */}
           <div className="space-y-4">
