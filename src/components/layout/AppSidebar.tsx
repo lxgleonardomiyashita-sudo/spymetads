@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { 
   LayoutDashboard, 
   Radio, 
@@ -19,6 +19,8 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -35,6 +37,18 @@ const bottomNavigation = [
 export function AppSidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
+  const { signOut, user } = useAuth();
+  const { toast } = useToast();
+
+  const handleSignOut = async () => {
+    await signOut();
+    toast({
+      title: "Até logo!",
+      description: "Você saiu da sua conta",
+    });
+    navigate("/auth");
+  };
 
   return (
     <aside
@@ -101,6 +115,13 @@ export function AppSidebar() {
 
       {/* Bottom Navigation */}
       <div className="border-t border-sidebar-border px-3 py-4 space-y-1">
+        {/* User email */}
+        {!collapsed && user && (
+          <div className="px-3 py-2 mb-2">
+            <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+          </div>
+        )}
+
         {bottomNavigation.map((item) => {
           const isActive = location.pathname === item.href;
           return (
@@ -131,6 +152,7 @@ export function AppSidebar() {
         <Tooltip delayDuration={0}>
           <TooltipTrigger asChild>
             <button
+              onClick={handleSignOut}
               className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-all duration-200"
             >
               <LogOut className="h-5 w-5 flex-shrink-0" />
