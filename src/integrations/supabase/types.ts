@@ -14,7 +14,167 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      monitor_tags: {
+        Row: {
+          monitor_id: string
+          tag_id: string
+        }
+        Insert: {
+          monitor_id: string
+          tag_id: string
+        }
+        Update: {
+          monitor_id?: string
+          tag_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "monitor_tags_monitor_id_fkey"
+            columns: ["monitor_id"]
+            isOneToOne: false
+            referencedRelation: "monitors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "monitor_tags_tag_id_fkey"
+            columns: ["tag_id"]
+            isOneToOne: false
+            referencedRelation: "tags"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      monitors: {
+        Row: {
+          ad_library_url: string
+          created_at: string
+          id: string
+          is_active: boolean
+          name: string
+          schedule_config: Json
+          timezone: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          ad_library_url: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name: string
+          schedule_config?: Json
+          timezone?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          ad_library_url?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          schedule_config?: Json
+          timezone?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          email: string | null
+          id: string
+          name: string | null
+          timezone: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          id?: string
+          name?: string | null
+          timezone?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          id?: string
+          name?: string | null
+          timezone?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      readings: {
+        Row: {
+          ads_active_count: number
+          created_at: string
+          error_message: string | null
+          id: string
+          monitor_id: string
+          source_method: string
+          status: string
+          timestamp: string
+        }
+        Insert: {
+          ads_active_count: number
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          monitor_id: string
+          source_method: string
+          status: string
+          timestamp?: string
+        }
+        Update: {
+          ads_active_count?: number
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          monitor_id?: string
+          source_method?: string
+          status?: string
+          timestamp?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "readings_monitor_id_fkey"
+            columns: ["monitor_id"]
+            isOneToOne: false
+            referencedRelation: "monitors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tags: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          type: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          type: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          type?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
