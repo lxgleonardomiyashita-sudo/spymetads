@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { TagChip } from "@/components/ui/tag-chip";
 import { NewMonitorDialog } from "@/components/monitors/NewMonitorDialog";
+import { ManageTagsDialog } from "@/components/monitors/ManageTagsDialog";
 import {
   Plus,
   Search,
@@ -16,6 +17,7 @@ import {
   Clock,
   Loader2,
   RefreshCw,
+  Tags,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -64,6 +66,8 @@ function MonitoresContent() {
   const [isLoading, setIsLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [scrapingMonitors, setScrapingMonitors] = useState<Set<string>>(new Set());
+  const [tagsDialogOpen, setTagsDialogOpen] = useState(false);
+  const [selectedMonitorForTags, setSelectedMonitorForTags] = useState<Monitor | null>(null);
 
   const fetchMonitors = async () => {
     if (!user) return;
@@ -240,6 +244,40 @@ function MonitoresContent() {
     }
   };
 
+  const openTagsDialog = (monitor: Monitor) => {
+    setSelectedMonitorForTags(monitor);
+    setTagsDialogOpen(true);
+  };
+
+  const removeTagFromMonitor = async (monitorId: string, tagId: string) => {
+    try {
+      const { error } = await supabase
+        .from('monitor_tags')
+        .delete()
+        .eq('monitor_id', monitorId)
+        .eq('tag_id', tagId);
+
+      if (error) throw error;
+
+      // Update local state
+      setMonitors(prev =>
+        prev.map(m =>
+          m.id === monitorId
+            ? { ...m, tags: m.tags.filter(t => t.id !== tagId) }
+            : m
+        )
+      );
+
+      toast({ title: "Tag removida" });
+    } catch (error: any) {
+      toast({
+        title: "Erro ao remover tag",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  };
+
   const filteredMonitors = monitors.filter(
     (monitor) =>
       monitor.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -356,8 +394,22 @@ function MonitoresContent() {
                   </p>
                   <div className="flex flex-wrap items-center gap-2 mt-2">
                     {monitor.tags.map((tag) => (
-                      <TagChip key={tag.id} name={tag.name} type={tag.type} size="sm" />
+                      <TagChip
+                        key={tag.id}
+                        name={tag.name}
+                        type={tag.type}
+                        size="sm"
+                        removable
+                        onRemove={() => removeTagFromMonitor(monitor.id, tag.id)}
+                      />
                     ))}
+                    <button
+                      onClick={() => openTagsDialog(monitor)}
+                      className="text-xs text-muted-foreground hover:text-primary transition-colors flex items-center gap-1"
+                    >
+                      <Plus className="h-3 w-3" />
+                      Tags
+                    </button>
                   </div>
                 </div>
               </div>
@@ -409,6 +461,10 @@ function MonitoresContent() {
                     >
                       <RefreshCw className="h-4 w-4 mr-2" />
                       Coletar Agora
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => openTagsDialog(monitor)}>
+                      <Tags className="h-4 w-4 mr-2" />
+                      Gerenciar Tags
                     </DropdownMenuItem>
                     <DropdownMenuItem>
                       <Edit className="h-4 w-4 mr-2" />
@@ -476,6 +532,21 @@ function MonitoresContent() {
           }}
           existingTags={tags}
         />
+
+        {selectedMonitorForTags && (
+          <ManageTagsDialog
+            open={tagsDialogOpen}
+            onOpenChange={setTagsDialogOpen}
+            monitorId={selectedMonitorForTags.id}
+            monitorName={selectedMonitorForTags.name}
+            currentTags={selectedMonitorForTags.tags}
+            allTags={tags}
+            onSuccess={() => {
+              fetchMonitors();
+              fetchTags();
+            }}
+          />
+        )}
       </div>
     </AppLayout>
   );
