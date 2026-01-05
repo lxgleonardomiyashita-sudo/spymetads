@@ -10,7 +10,8 @@ import {
   ChevronLeft,
   ChevronRight,
   LogOut,
-  Activity
+  Activity,
+  Folder
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,7 @@ import { useToast } from "@/hooks/use-toast";
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Monitores", href: "/monitores", icon: Radio },
+  { name: "Grupos", href: "/grupos", icon: Folder },
   { name: "Análises", href: "/analises", icon: BarChart3 },
   { name: "Tags", href: "/tags", icon: Tags },
   { name: "Alertas", href: "/alertas", icon: Bell },

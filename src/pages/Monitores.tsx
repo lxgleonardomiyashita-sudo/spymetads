@@ -38,11 +38,19 @@ interface Tag {
   type: 'nicho' | 'idioma' | 'pais' | 'custom';
 }
 
+interface Group {
+  id: string;
+  name: string;
+  color: string;
+}
+
 interface Monitor {
   id: string;
   name: string;
   ad_library_url: string;
   is_active: boolean;
+  group_id: string | null;
+  group_name?: string;
   schedule_config: {
     interval: number;
     days: string[];
@@ -68,6 +76,7 @@ function MonitoresContent() {
   const [scrapingMonitors, setScrapingMonitors] = useState<Set<string>>(new Set());
   const [tagsDialogOpen, setTagsDialogOpen] = useState(false);
   const [selectedMonitorForTags, setSelectedMonitorForTags] = useState<Monitor | null>(null);
+  const [groups, setGroups] = useState<Group[]>([]);
 
   const fetchMonitors = async () => {
     if (!user) return;
@@ -114,6 +123,7 @@ function MonitoresContent() {
         name: m.name,
         ad_library_url: m.ad_library_url,
         is_active: m.is_active,
+        group_id: m.group_id,
         schedule_config: m.schedule_config as Monitor['schedule_config'],
         created_at: m.created_at,
         tags: m.monitor_tags?.map((mt: any) => mt.tags).filter(Boolean) || [],
@@ -150,9 +160,24 @@ function MonitoresContent() {
     }
   };
 
+  const fetchGroups = async () => {
+    if (!user) return;
+
+    const { data, error } = await supabase
+      .from('groups')
+      .select('id, name, color')
+      .eq('user_id', user.id)
+      .order('name');
+
+    if (!error && data) {
+      setGroups(data as Group[]);
+    }
+  };
+
   useEffect(() => {
     fetchMonitors();
     fetchTags();
+    fetchGroups();
   }, [user]);
 
   const toggleMonitorStatus = async (monitorId: string, currentStatus: boolean) => {
@@ -529,8 +554,10 @@ function MonitoresContent() {
           onSuccess={() => {
             fetchMonitors();
             fetchTags();
+            fetchGroups();
           }}
           existingTags={tags}
+          existingGroups={groups}
         />
 
         {selectedMonitorForTags && (

@@ -14,6 +14,36 @@ export type Database = {
   }
   public: {
     Tables: {
+      groups: {
+        Row: {
+          color: string | null
+          created_at: string
+          description: string | null
+          id: string
+          name: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          color?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          name: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          color?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          name?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       monitor_tags: {
         Row: {
           monitor_id: string
@@ -48,6 +78,7 @@ export type Database = {
         Row: {
           ad_library_url: string
           created_at: string
+          group_id: string | null
           id: string
           is_active: boolean
           name: string
@@ -59,6 +90,7 @@ export type Database = {
         Insert: {
           ad_library_url: string
           created_at?: string
+          group_id?: string | null
           id?: string
           is_active?: boolean
           name: string
@@ -70,6 +102,7 @@ export type Database = {
         Update: {
           ad_library_url?: string
           created_at?: string
+          group_id?: string | null
           id?: string
           is_active?: boolean
           name?: string
@@ -78,7 +111,15 @@ export type Database = {
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "monitors_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
