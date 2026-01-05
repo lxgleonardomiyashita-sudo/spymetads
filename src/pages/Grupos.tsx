@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -54,6 +55,7 @@ const COLORS = [
 function GruposContent() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState("");
   const [groups, setGroups] = useState<Group[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -246,6 +248,7 @@ function GruposContent() {
             <div
               key={group.id}
               className="metric-card hover:border-primary/30 transition-colors cursor-pointer group"
+              onClick={() => navigate(`/grupos/${group.id}`)}
             >
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3">
@@ -270,19 +273,26 @@ function GruposContent() {
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={(e) => e.stopPropagation()}
                     >
                       <MoreVertical className="h-4 w-4" />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => openEditDialog(group)}>
+                    <DropdownMenuItem onClick={(e) => {
+                      e.stopPropagation();
+                      openEditDialog(group);
+                    }}>
                       <Edit className="h-4 w-4 mr-2" />
                       Editar
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
                       className="text-destructive"
-                      onClick={() => deleteGroup(group.id)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteGroup(group.id);
+                      }}
                     >
                       <Trash2 className="h-4 w-4 mr-2" />
                       Excluir
