@@ -322,12 +322,13 @@ function MonitoresContent() {
 
   const getScheduleLabel = (config: Monitor['schedule_config']) => {
     const windowLabels: Record<string, string> = {
+      dawn: 'Madrugada',
       morning: 'Manhã',
       afternoon: 'Tarde',
       evening: 'Noite',
     };
-    const windows = config.windows.map(w => windowLabels[w]).join('/');
-    return `A cada ${config.interval} min • ${windows}`;
+    const windows = config.windows.map(w => windowLabels[w]).filter(Boolean).join('/');
+    return `A cada ${config.interval} min • ${windows || '24h'}`;
   };
 
   const formatTimestamp = (timestamp: string) => {

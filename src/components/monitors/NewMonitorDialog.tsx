@@ -59,6 +59,7 @@ const DAYS = [
 ];
 
 const WINDOWS = [
+  { value: 'dawn', label: 'Madrugada (00:00-04:59)' },
   { value: 'morning', label: 'Manhã (05:00-11:59)' },
   { value: 'afternoon', label: 'Tarde (12:00-17:59)' },
   { value: 'evening', label: 'Noite (18:00-23:59)' },

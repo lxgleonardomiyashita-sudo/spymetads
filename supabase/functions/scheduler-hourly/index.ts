@@ -44,19 +44,14 @@ serve(async (req) => {
     // Determine current window based on Brazil time (UTC-3)
     const brazilHour = (currentHour - 3 + 24) % 24;
     let currentWindow: string;
-    if (brazilHour >= 5 && brazilHour < 12) {
+    if (brazilHour >= 0 && brazilHour < 5) {
+      currentWindow = 'dawn';
+    } else if (brazilHour >= 5 && brazilHour < 12) {
       currentWindow = 'morning';
     } else if (brazilHour >= 12 && brazilHour < 18) {
       currentWindow = 'afternoon';
-    } else if (brazilHour >= 18 && brazilHour < 24) {
-      currentWindow = 'evening';
     } else {
-      // Night hours (0-5) - skip
-      console.log('Night hours, skipping scheduler');
-      return new Response(
-        JSON.stringify({ success: true, message: 'Night hours, skipping', processed: 0 }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      currentWindow = 'evening';
     }
 
     console.log(`Brazil hour: ${brazilHour}, current window: ${currentWindow}`);
