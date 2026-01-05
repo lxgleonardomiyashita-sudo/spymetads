@@ -509,11 +509,21 @@ function MonitoresContent() {
                       <RefreshCw className="h-4 w-4 mr-2" />
                       Coletar Agora
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => openTagsDialog(monitor)}>
+                    <DropdownMenuItem
+                      onSelect={(e) => {
+                        e.preventDefault();
+                        openTagsDialog(monitor);
+                      }}
+                    >
                       <Tags className="h-4 w-4 mr-2" />
                       Gerenciar Tags
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => openEditDialog(monitor)}>
+                    <DropdownMenuItem
+                      onSelect={(e) => {
+                        e.preventDefault();
+                        openEditDialog(monitor);
+                      }}
+                    >
                       <Edit className="h-4 w-4 mr-2" />
                       Editar
                     </DropdownMenuItem>
