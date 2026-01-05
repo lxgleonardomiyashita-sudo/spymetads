@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { TagChip } from "@/components/ui/tag-chip";
-import { Plus, Search, Hash, MoreVertical, Edit, Trash2 } from "lucide-react";
+import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
+import { Plus, Search, Hash, MoreVertical, Edit, Trash2, Loader2 } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,7 +19,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { cn } from "@/lib/utils";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
 
 interface Tag {
   id: string;
@@ -27,23 +37,6 @@ interface Tag {
   monitorsCount: number;
 }
 
-const mockTags: Tag[] = [
-  { id: '1', name: 'ED', type: 'nicho', monitorsCount: 5 },
-  { id: '2', name: 'Diabetes', type: 'nicho', monitorsCount: 3 },
-  { id: '3', name: 'Emagrecimento', type: 'nicho', monitorsCount: 4 },
-  { id: '4', name: 'Skincare', type: 'nicho', monitorsCount: 2 },
-  { id: '5', name: 'EN-US', type: 'idioma', monitorsCount: 8 },
-  { id: '6', name: 'PT-BR', type: 'idioma', monitorsCount: 6 },
-  { id: '7', name: 'DE', type: 'idioma', monitorsCount: 2 },
-  { id: '8', name: 'ES', type: 'idioma', monitorsCount: 3 },
-  { id: '9', name: 'FR', type: 'idioma', monitorsCount: 1 },
-  { id: '10', name: 'USA', type: 'pais', monitorsCount: 7 },
-  { id: '11', name: 'Brasil', type: 'pais', monitorsCount: 5 },
-  { id: '12', name: 'Alemanha', type: 'pais', monitorsCount: 2 },
-  { id: '13', name: 'Alta Prioridade', type: 'custom', monitorsCount: 4 },
-  { id: '14', name: 'Teste A/B', type: 'custom', monitorsCount: 2 },
-];
-
 const typeLabels = {
   nicho: 'Nicho',
   idioma: 'Idioma',
@@ -51,11 +44,122 @@ const typeLabels = {
   custom: 'Personalizado',
 };
 
-export default function Tags() {
+function TagsContent() {
+  const { user } = useAuth();
+  const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState<string>("all");
+  const [tags, setTags] = useState<Tag[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [newTagName, setNewTagName] = useState("");
+  const [newTagType, setNewTagType] = useState<'nicho' | 'idioma' | 'pais' | 'custom'>('nicho');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const filteredTags = mockTags.filter((tag) => {
+  const fetchTags = async () => {
+    if (!user) return;
+
+    try {
+      // Fetch tags with monitor count
+      const { data: tagsData, error: tagsError } = await supabase
+        .from('tags')
+        .select(`
+          *,
+          monitor_tags (monitor_id)
+        `)
+        .eq('user_id', user.id)
+        .order('name');
+
+      if (tagsError) throw tagsError;
+
+      const transformedTags: Tag[] = (tagsData || []).map((t) => ({
+        id: t.id,
+        name: t.name,
+        type: t.type as Tag['type'],
+        monitorsCount: t.monitor_tags?.length || 0,
+      }));
+
+      setTags(transformedTags);
+    } catch (error: any) {
+      toast({
+        title: "Erro ao carregar tags",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchTags();
+  }, [user]);
+
+  const handleCreateTag = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTagName.trim() || !user) return;
+
+    setIsSubmitting(true);
+
+    try {
+      const { error } = await supabase
+        .from('tags')
+        .insert({
+          user_id: user.id,
+          name: newTagName.trim(),
+          type: newTagType,
+        });
+
+      if (error) throw error;
+
+      toast({
+        title: "Tag criada!",
+        description: `Tag "${newTagName}" foi adicionada`,
+      });
+
+      setNewTagName("");
+      setDialogOpen(false);
+      fetchTags();
+    } catch (error: any) {
+      if (error.message?.includes("duplicate")) {
+        toast({
+          title: "Tag já existe",
+          description: "Você já tem uma tag com esse nome",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Erro ao criar tag",
+          description: error.message,
+          variant: "destructive",
+        });
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const deleteTag = async (tagId: string) => {
+    try {
+      const { error } = await supabase
+        .from('tags')
+        .delete()
+        .eq('id', tagId);
+
+      if (error) throw error;
+
+      setTags(prev => prev.filter(t => t.id !== tagId));
+      toast({ title: "Tag excluída" });
+    } catch (error: any) {
+      toast({
+        title: "Erro ao excluir tag",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const filteredTags = tags.filter((tag) => {
     const matchesSearch = tag.name.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesType = filterType === "all" || tag.type === filterType;
     return matchesSearch && matchesType;
@@ -68,6 +172,16 @@ export default function Tags() {
     return acc;
   }, {} as Record<string, Tag[]>);
 
+  if (isLoading) {
+    return (
+      <AppLayout>
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </AppLayout>
+    );
+  }
+
   return (
     <AppLayout>
       <div className="space-y-6 fade-in">
@@ -79,7 +193,10 @@ export default function Tags() {
               Organize seus monitores com tags
             </p>
           </div>
-          <Button className="bg-primary text-primary-foreground hover:bg-primary/90 glow-hover">
+          <Button
+            className="bg-primary text-primary-foreground hover:bg-primary/90 glow-hover"
+            onClick={() => setDialogOpen(true)}
+          >
             <Plus className="h-4 w-4 mr-2" />
             Nova Tag
           </Button>
@@ -115,41 +232,41 @@ export default function Tags() {
           <div className="metric-card">
             <p className="text-sm text-muted-foreground">Total de Tags</p>
             <p className="text-2xl font-bold text-foreground mt-1">
-              {mockTags.length}
+              {tags.length}
             </p>
           </div>
           <div className="metric-card">
             <p className="text-sm text-muted-foreground">Nichos</p>
             <p className="text-2xl font-bold text-foreground mt-1">
-              {mockTags.filter((t) => t.type === 'nicho').length}
+              {tags.filter((t) => t.type === 'nicho').length}
             </p>
           </div>
           <div className="metric-card">
             <p className="text-sm text-muted-foreground">Idiomas</p>
             <p className="text-2xl font-bold text-foreground mt-1">
-              {mockTags.filter((t) => t.type === 'idioma').length}
+              {tags.filter((t) => t.type === 'idioma').length}
             </p>
           </div>
           <div className="metric-card">
             <p className="text-sm text-muted-foreground">Países</p>
             <p className="text-2xl font-bold text-foreground mt-1">
-              {mockTags.filter((t) => t.type === 'pais').length}
+              {tags.filter((t) => t.type === 'pais').length}
             </p>
           </div>
         </div>
 
         {/* Tags Grid by Type */}
-        {Object.entries(groupedTags).map(([type, tags]) => (
+        {Object.entries(groupedTags).map(([type, typeTags]) => (
           <div key={type} className="space-y-3">
             <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
               <Hash className="h-5 w-5 text-primary" />
               {typeLabels[type as keyof typeof typeLabels]}
               <span className="text-sm font-normal text-muted-foreground">
-                ({tags.length})
+                ({typeTags.length})
               </span>
             </h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-              {tags.map((tag) => (
+              {typeTags.map((tag) => (
                 <div
                   key={tag.id}
                   className="metric-card flex items-center justify-between hover:border-primary/30 transition-colors cursor-pointer group"
@@ -176,7 +293,10 @@ export default function Tags() {
                         Editar
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
-                      <DropdownMenuItem className="text-destructive">
+                      <DropdownMenuItem
+                        className="text-destructive"
+                        onClick={() => deleteTag(tag.id)}
+                      >
                         <Trash2 className="h-4 w-4 mr-2" />
                         Excluir
                       </DropdownMenuItem>
@@ -188,18 +308,84 @@ export default function Tags() {
           </div>
         ))}
 
-        {filteredTags.length === 0 && (
+        {filteredTags.length === 0 && !isLoading && (
           <div className="text-center py-12">
             <Hash className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
             <h3 className="text-lg font-medium text-foreground">
-              Nenhuma tag encontrada
+              {tags.length === 0 ? "Nenhuma tag cadastrada" : "Nenhuma tag encontrada"}
             </h3>
             <p className="text-muted-foreground mt-1">
-              Tente ajustar sua busca ou crie uma nova tag.
+              {tags.length === 0
+                ? "Crie tags para organizar seus monitores."
+                : "Tente ajustar sua busca."}
             </p>
+            {tags.length === 0 && (
+              <Button
+                className="mt-4 bg-primary text-primary-foreground hover:bg-primary/90"
+                onClick={() => setDialogOpen(true)}
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Criar Primeira Tag
+              </Button>
+            )}
           </div>
         )}
+
+        {/* New Tag Dialog */}
+        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <DialogContent className="bg-card border-border">
+            <DialogHeader>
+              <DialogTitle className="text-foreground">Nova Tag</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleCreateTag} className="space-y-4 mt-4">
+              <div className="space-y-2">
+                <Label htmlFor="tagName" className="text-foreground">Nome</Label>
+                <Input
+                  id="tagName"
+                  placeholder="Ex: ED, PT-BR, Brasil..."
+                  value={newTagName}
+                  onChange={(e) => setNewTagName(e.target.value)}
+                  className="bg-muted border-border"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="tagType" className="text-foreground">Tipo</Label>
+                <Select value={newTagType} onValueChange={(v: any) => setNewTagType(v)}>
+                  <SelectTrigger className="bg-muted border-border">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="nicho">Nicho</SelectItem>
+                    <SelectItem value="idioma">Idioma</SelectItem>
+                    <SelectItem value="pais">País</SelectItem>
+                    <SelectItem value="custom">Personalizado</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex justify-end gap-3 pt-4">
+                <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={isSubmitting || !newTagName.trim()}
+                  className="bg-primary text-primary-foreground hover:bg-primary/90"
+                >
+                  {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Criar"}
+                </Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
       </div>
     </AppLayout>
+  );
+}
+
+export default function Tags() {
+  return (
+    <ProtectedRoute>
+      <TagsContent />
+    </ProtectedRoute>
   );
 }

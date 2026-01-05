@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { TagChip } from "@/components/ui/tag-chip";
+import { NewMonitorDialog } from "@/components/monitors/NewMonitorDialog";
 import {
   Plus,
   Search,
@@ -13,6 +14,7 @@ import {
   Trash2,
   Edit,
   Clock,
+  Loader2,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -22,78 +24,182 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
+import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
+
+interface Tag {
+  id: string;
+  name: string;
+  type: 'nicho' | 'idioma' | 'pais' | 'custom';
+}
 
 interface Monitor {
   id: string;
   name: string;
-  url: string;
-  currentCount: number;
-  lastReading: string;
-  status: 'active' | 'paused' | 'error';
-  schedule: string;
-  tags: Array<{ name: string; type: 'nicho' | 'idioma' | 'pais' | 'custom' }>;
+  ad_library_url: string;
+  is_active: boolean;
+  schedule_config: {
+    interval: number;
+    days: string[];
+    windows: string[];
+  };
+  created_at: string;
+  tags: Tag[];
+  latest_reading?: {
+    ads_active_count: number;
+    timestamp: string;
+    status: string;
+  };
 }
 
-const mockMonitors: Monitor[] = [
-  {
-    id: '1',
-    name: "ED Offers - US",
-    url: "https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=US&q=ed%20supplement",
-    currentCount: 15234,
-    lastReading: "2024-01-05 14:32:15",
-    status: 'active',
-    schedule: "A cada 30 min • 08:00-22:00",
-    tags: [
-      { name: "ED", type: 'nicho' },
-      { name: "EN-US", type: 'idioma' },
-      { name: "USA", type: 'pais' },
-    ],
-  },
-  {
-    id: '2',
-    name: "Diabetes - BR",
-    url: "https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=BR&q=diabetes",
-    currentCount: 8742,
-    lastReading: "2024-01-05 14:30:00",
-    status: 'active',
-    schedule: "A cada 60 min • Manhã/Tarde",
-    tags: [
-      { name: "Diabetes", type: 'nicho' },
-      { name: "PT-BR", type: 'idioma' },
-    ],
-  },
-  {
-    id: '3',
-    name: "Weight Loss - DE",
-    url: "https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=DE&q=abnehmen",
-    currentCount: 4521,
-    lastReading: "2024-01-05 14:28:45",
-    status: 'paused',
-    schedule: "Pausado",
-    tags: [
-      { name: "Emagrecimento", type: 'nicho' },
-      { name: "DE", type: 'idioma' },
-    ],
-  },
-  {
-    id: '4',
-    name: "Skincare - ES",
-    url: "https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=ES&q=skincare",
-    currentCount: 0,
-    lastReading: "2024-01-05 13:45:22",
-    status: 'error',
-    schedule: "A cada 15 min • Todos os dias",
-    tags: [
-      { name: "Skincare", type: 'nicho' },
-      { name: "ES", type: 'idioma' },
-    ],
-  },
-];
-
-export default function Monitores() {
+function MonitoresContent() {
+  const { user } = useAuth();
+  const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState("");
+  const [monitors, setMonitors] = useState<Monitor[]>([]);
+  const [tags, setTags] = useState<Tag[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [dialogOpen, setDialogOpen] = useState(false);
 
-  const filteredMonitors = mockMonitors.filter(
+  const fetchMonitors = async () => {
+    if (!user) return;
+
+    try {
+      // Fetch monitors
+      const { data: monitorsData, error: monitorsError } = await supabase
+        .from('monitors')
+        .select(`
+          *,
+          monitor_tags (
+            tag_id,
+            tags (id, name, type)
+          )
+        `)
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (monitorsError) throw monitorsError;
+
+      // Fetch latest readings for each monitor
+      const monitorIds = monitorsData?.map(m => m.id) || [];
+      let readingsMap: Record<string, any> = {};
+
+      if (monitorIds.length > 0) {
+        const { data: readingsData } = await supabase
+          .from('readings')
+          .select('*')
+          .in('monitor_id', monitorIds)
+          .order('timestamp', { ascending: false });
+
+        if (readingsData) {
+          readingsData.forEach((reading) => {
+            if (!readingsMap[reading.monitor_id]) {
+              readingsMap[reading.monitor_id] = reading;
+            }
+          });
+        }
+      }
+
+      // Transform data
+      const transformedMonitors: Monitor[] = (monitorsData || []).map((m) => ({
+        id: m.id,
+        name: m.name,
+        ad_library_url: m.ad_library_url,
+        is_active: m.is_active,
+        schedule_config: m.schedule_config as Monitor['schedule_config'],
+        created_at: m.created_at,
+        tags: m.monitor_tags?.map((mt: any) => mt.tags).filter(Boolean) || [],
+        latest_reading: readingsMap[m.id] ? {
+          ads_active_count: readingsMap[m.id].ads_active_count,
+          timestamp: readingsMap[m.id].timestamp,
+          status: readingsMap[m.id].status,
+        } : undefined,
+      }));
+
+      setMonitors(transformedMonitors);
+    } catch (error: any) {
+      toast({
+        title: "Erro ao carregar monitores",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const fetchTags = async () => {
+    if (!user) return;
+
+    const { data, error } = await supabase
+      .from('tags')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('name');
+
+    if (!error && data) {
+      setTags(data as Tag[]);
+    }
+  };
+
+  useEffect(() => {
+    fetchMonitors();
+    fetchTags();
+  }, [user]);
+
+  const toggleMonitorStatus = async (monitorId: string, currentStatus: boolean) => {
+    try {
+      const { error } = await supabase
+        .from('monitors')
+        .update({ is_active: !currentStatus })
+        .eq('id', monitorId);
+
+      if (error) throw error;
+
+      setMonitors(prev =>
+        prev.map(m =>
+          m.id === monitorId ? { ...m, is_active: !currentStatus } : m
+        )
+      );
+
+      toast({
+        title: currentStatus ? "Monitor pausado" : "Monitor ativado",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Erro ao atualizar monitor",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const deleteMonitor = async (monitorId: string) => {
+    try {
+      const { error } = await supabase
+        .from('monitors')
+        .delete()
+        .eq('id', monitorId);
+
+      if (error) throw error;
+
+      setMonitors(prev => prev.filter(m => m.id !== monitorId));
+
+      toast({
+        title: "Monitor excluído",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Erro ao excluir monitor",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const filteredMonitors = monitors.filter(
     (monitor) =>
       monitor.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       monitor.tags.some((tag) =>
@@ -101,28 +207,36 @@ export default function Monitores() {
       )
   );
 
-  const getStatusConfig = (status: Monitor['status']) => {
-    switch (status) {
-      case 'active':
-        return {
-          label: 'Ativo',
-          dotClass: 'bg-success animate-pulse',
-          textClass: 'text-success',
-        };
-      case 'paused':
-        return {
-          label: 'Pausado',
-          dotClass: 'bg-muted-foreground',
-          textClass: 'text-muted-foreground',
-        };
-      case 'error':
-        return {
-          label: 'Erro',
-          dotClass: 'bg-destructive',
-          textClass: 'text-destructive',
-        };
-    }
+  const getScheduleLabel = (config: Monitor['schedule_config']) => {
+    const windowLabels: Record<string, string> = {
+      morning: 'Manhã',
+      afternoon: 'Tarde',
+      evening: 'Noite',
+    };
+    const windows = config.windows.map(w => windowLabels[w]).join('/');
+    return `A cada ${config.interval} min • ${windows}`;
   };
+
+  const formatTimestamp = (timestamp: string) => {
+    const date = new Date(timestamp);
+    return date.toLocaleString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  if (isLoading) {
+    return (
+      <AppLayout>
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </AppLayout>
+    );
+  }
 
   return (
     <AppLayout>
@@ -135,7 +249,10 @@ export default function Monitores() {
               Gerencie seus monitores de anúncios
             </p>
           </div>
-          <Button className="bg-primary text-primary-foreground hover:bg-primary/90 glow-hover">
+          <Button
+            className="bg-primary text-primary-foreground hover:bg-primary/90 glow-hover"
+            onClick={() => setDialogOpen(true)}
+          >
             <Plus className="h-4 w-4 mr-2" />
             Novo Monitor
           </Button>
@@ -154,114 +271,159 @@ export default function Monitores() {
 
         {/* Monitors List */}
         <div className="space-y-3">
-          {filteredMonitors.map((monitor) => {
-            const statusConfig = getStatusConfig(monitor.status);
-            return (
-              <div
-                key={monitor.id}
-                className="metric-card flex flex-col lg:flex-row lg:items-center gap-4 hover:border-primary/30 transition-colors"
-              >
-                {/* Left: Icon and Info */}
-                <div className="flex items-start gap-4 flex-1">
-                  <div
-                    className={cn(
-                      "flex h-12 w-12 items-center justify-center rounded-xl flex-shrink-0",
-                      monitor.status === 'active'
-                        ? "bg-success/10 text-success"
-                        : monitor.status === 'error'
-                        ? "bg-destructive/10 text-destructive"
-                        : "bg-muted text-muted-foreground"
-                    )}
-                  >
-                    <Radio className="h-6 w-6" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-3">
-                      <h3 className="text-lg font-semibold text-foreground">
-                        {monitor.name}
-                      </h3>
-                      <div className="flex items-center gap-1.5">
-                        <div className={cn("w-2 h-2 rounded-full", statusConfig.dotClass)} />
-                        <span className={cn("text-sm", statusConfig.textClass)}>
-                          {statusConfig.label}
-                        </span>
-                      </div>
-                    </div>
-                    <p className="text-sm text-muted-foreground truncate mt-1">
-                      {monitor.url}
-                    </p>
-                    <div className="flex flex-wrap items-center gap-2 mt-2">
-                      {monitor.tags.map((tag, idx) => (
-                        <TagChip key={idx} name={tag.name} type={tag.type} size="sm" />
-                      ))}
-                    </div>
-                  </div>
+          {filteredMonitors.map((monitor) => (
+            <div
+              key={monitor.id}
+              className="metric-card flex flex-col lg:flex-row lg:items-center gap-4 hover:border-primary/30 transition-colors"
+            >
+              {/* Left: Icon and Info */}
+              <div className="flex items-start gap-4 flex-1">
+                <div
+                  className={cn(
+                    "flex h-12 w-12 items-center justify-center rounded-xl flex-shrink-0",
+                    monitor.is_active
+                      ? "bg-success/10 text-success"
+                      : "bg-muted text-muted-foreground"
+                  )}
+                >
+                  <Radio className="h-6 w-6" />
                 </div>
-
-                {/* Right: Stats and Actions */}
-                <div className="flex items-center gap-6 lg:gap-8">
-                  <div className="text-right">
-                    <p className="text-2xl font-bold text-foreground">
-                      {monitor.currentCount.toLocaleString('pt-BR')}
-                    </p>
-                    <p className="text-xs text-muted-foreground">anúncios ativos</p>
-                  </div>
-                  <div className="text-right hidden md:block">
-                    <div className="flex items-center gap-1.5 text-muted-foreground">
-                      <Clock className="h-3.5 w-3.5" />
-                      <span className="text-sm">{monitor.schedule}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-3">
+                    <h3 className="text-lg font-semibold text-foreground">
+                      {monitor.name}
+                    </h3>
+                    <div className="flex items-center gap-1.5">
+                      <div
+                        className={cn(
+                          "w-2 h-2 rounded-full",
+                          monitor.is_active ? "bg-success animate-pulse" : "bg-muted-foreground"
+                        )}
+                      />
+                      <span
+                        className={cn(
+                          "text-sm",
+                          monitor.is_active ? "text-success" : "text-muted-foreground"
+                        )}
+                      >
+                        {monitor.is_active ? "Ativo" : "Pausado"}
+                      </span>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Última: {monitor.lastReading}
-                    </p>
                   </div>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8">
-                        <MoreVertical className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-48">
-                      <DropdownMenuItem>
-                        <Edit className="h-4 w-4 mr-2" />
-                        Editar
-                      </DropdownMenuItem>
-                      {monitor.status === 'active' ? (
-                        <DropdownMenuItem>
-                          <Pause className="h-4 w-4 mr-2" />
-                          Pausar
-                        </DropdownMenuItem>
-                      ) : (
-                        <DropdownMenuItem>
-                          <Play className="h-4 w-4 mr-2" />
-                          Ativar
-                        </DropdownMenuItem>
-                      )}
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem className="text-destructive">
-                        <Trash2 className="h-4 w-4 mr-2" />
-                        Excluir
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  <p className="text-sm text-muted-foreground truncate mt-1">
+                    {monitor.ad_library_url}
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2 mt-2">
+                    {monitor.tags.map((tag) => (
+                      <TagChip key={tag.id} name={tag.name} type={tag.type} size="sm" />
+                    ))}
+                  </div>
                 </div>
               </div>
-            );
-          })}
+
+              {/* Right: Stats and Actions */}
+              <div className="flex items-center gap-6 lg:gap-8">
+                <div className="text-right">
+                  <p className="text-2xl font-bold text-foreground">
+                    {monitor.latest_reading
+                      ? monitor.latest_reading.ads_active_count.toLocaleString('pt-BR')
+                      : '-'}
+                  </p>
+                  <p className="text-xs text-muted-foreground">anúncios ativos</p>
+                </div>
+                <div className="text-right hidden md:block">
+                  <div className="flex items-center gap-1.5 text-muted-foreground">
+                    <Clock className="h-3.5 w-3.5" />
+                    <span className="text-sm">{getScheduleLabel(monitor.schedule_config)}</span>
+                  </div>
+                  {monitor.latest_reading && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Última: {formatTimestamp(monitor.latest_reading.timestamp)}
+                    </p>
+                  )}
+                </div>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                      <MoreVertical className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48">
+                    <DropdownMenuItem>
+                      <Edit className="h-4 w-4 mr-2" />
+                      Editar
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => toggleMonitorStatus(monitor.id, monitor.is_active)}>
+                      {monitor.is_active ? (
+                        <>
+                          <Pause className="h-4 w-4 mr-2" />
+                          Pausar
+                        </>
+                      ) : (
+                        <>
+                          <Play className="h-4 w-4 mr-2" />
+                          Ativar
+                        </>
+                      )}
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      className="text-destructive"
+                      onClick={() => deleteMonitor(monitor.id)}
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Excluir
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </div>
+          ))}
         </div>
 
-        {filteredMonitors.length === 0 && (
+        {filteredMonitors.length === 0 && !isLoading && (
           <div className="text-center py-12">
             <Radio className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
             <h3 className="text-lg font-medium text-foreground">
-              Nenhum monitor encontrado
+              {monitors.length === 0
+                ? "Nenhum monitor cadastrado"
+                : "Nenhum monitor encontrado"}
             </h3>
             <p className="text-muted-foreground mt-1">
-              Tente ajustar sua busca ou crie um novo monitor.
+              {monitors.length === 0
+                ? "Crie seu primeiro monitor para começar a monitorar anúncios."
+                : "Tente ajustar sua busca."}
             </p>
+            {monitors.length === 0 && (
+              <Button
+                className="mt-4 bg-primary text-primary-foreground hover:bg-primary/90"
+                onClick={() => setDialogOpen(true)}
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Criar Primeiro Monitor
+              </Button>
+            )}
           </div>
         )}
+
+        <NewMonitorDialog
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+          onSuccess={() => {
+            fetchMonitors();
+            fetchTags();
+          }}
+          existingTags={tags}
+        />
       </div>
     </AppLayout>
+  );
+}
+
+export default function Monitores() {
+  return (
+    <ProtectedRoute>
+      <MonitoresContent />
+    </ProtectedRoute>
   );
 }
