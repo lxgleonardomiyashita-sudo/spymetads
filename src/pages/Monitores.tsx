@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { TagChip } from "@/components/ui/tag-chip";
 import { NewMonitorDialog } from "@/components/monitors/NewMonitorDialog";
 import { ManageTagsDialog } from "@/components/monitors/ManageTagsDialog";
+import { EditMonitorDialog } from "@/components/monitors/EditMonitorDialog";
 import {
   Plus,
   Search,
@@ -18,6 +19,7 @@ import {
   Loader2,
   RefreshCw,
   Tags,
+  Folder,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -77,6 +79,8 @@ function MonitoresContent() {
   const [tagsDialogOpen, setTagsDialogOpen] = useState(false);
   const [selectedMonitorForTags, setSelectedMonitorForTags] = useState<Monitor | null>(null);
   const [groups, setGroups] = useState<Group[]>([]);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [selectedMonitorForEdit, setSelectedMonitorForEdit] = useState<Monitor | null>(null);
 
   const fetchMonitors = async () => {
     if (!user) return;
@@ -274,6 +278,11 @@ function MonitoresContent() {
     setTagsDialogOpen(true);
   };
 
+  const openEditDialog = (monitor: Monitor) => {
+    setSelectedMonitorForEdit(monitor);
+    setEditDialogOpen(true);
+  };
+
   const removeTagFromMonitor = async (monitorId: string, tagId: string) => {
     try {
       const { error } = await supabase
@@ -393,10 +402,22 @@ function MonitoresContent() {
                   <Radio className="h-6 w-6" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 flex-wrap">
                     <h3 className="text-lg font-semibold text-foreground">
                       {monitor.name}
                     </h3>
+                    {monitor.group_id && groups.find((g) => g.id === monitor.group_id) && (
+                      <span
+                        className="text-xs px-2 py-0.5 rounded-full flex items-center gap-1"
+                        style={{
+                          backgroundColor: `${groups.find((g) => g.id === monitor.group_id)?.color}20`,
+                          color: groups.find((g) => g.id === monitor.group_id)?.color,
+                        }}
+                      >
+                        <Folder className="h-3 w-3" />
+                        {groups.find((g) => g.id === monitor.group_id)?.name}
+                      </span>
+                    )}
                     <div className="flex items-center gap-1.5">
                       <div
                         className={cn(
@@ -491,7 +512,7 @@ function MonitoresContent() {
                       <Tags className="h-4 w-4 mr-2" />
                       Gerenciar Tags
                     </DropdownMenuItem>
-                    <DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => openEditDialog(monitor)}>
                       <Edit className="h-4 w-4 mr-2" />
                       Editar
                     </DropdownMenuItem>
@@ -571,6 +592,19 @@ function MonitoresContent() {
             onSuccess={() => {
               fetchMonitors();
               fetchTags();
+            }}
+          />
+        )}
+
+        {selectedMonitorForEdit && (
+          <EditMonitorDialog
+            open={editDialogOpen}
+            onOpenChange={setEditDialogOpen}
+            monitor={selectedMonitorForEdit}
+            groups={groups}
+            onSuccess={() => {
+              fetchMonitors();
+              fetchGroups();
             }}
           />
         )}
