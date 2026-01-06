@@ -13,7 +13,9 @@ interface EnhancedMonitorCardProps {
   sparklineData: number[];
   tags: Array<{ name: string; type: 'nicho' | 'idioma' | 'pais' | 'custom' }>;
   status: 'active' | 'inactive' | 'error';
+  isSelected?: boolean;
   onViewCreatives?: () => void;
+  onSelect?: () => void;
 }
 
 export function EnhancedMonitorCard({
@@ -24,7 +26,9 @@ export function EnhancedMonitorCard({
   sparklineData,
   tags,
   status,
+  isSelected,
   onViewCreatives,
+  onSelect,
 }: EnhancedMonitorCardProps) {
   const getTrendColor = () => {
     if (trend > 5) return 'success';
@@ -37,7 +41,13 @@ export function EnhancedMonitorCard({
   };
 
   return (
-    <div className="metric-card hover:border-primary/30 transition-all cursor-pointer group">
+    <div 
+      className={cn(
+        "metric-card hover:border-primary/30 transition-all cursor-pointer group",
+        isSelected && "ring-2 ring-primary border-primary"
+      )}
+      onClick={onSelect}
+    >
       <div className="flex items-start justify-between mb-3">
         <div className="flex items-center gap-3 flex-1 min-w-0">
           <div className={cn(
