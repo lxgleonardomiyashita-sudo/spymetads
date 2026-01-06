@@ -1,13 +1,19 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { MetricCard } from "@/components/dashboard/MetricCard";
-import { MonitorStatusCard } from "@/components/dashboard/MonitorStatusCard";
 import { ActiveAdsLineChart } from "@/components/charts/ActiveAdsLineChart";
 import { RecentReadingsTable } from "@/components/dashboard/RecentReadingsTable";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
-import { Radio, TrendingUp, Activity, AlertTriangle, Loader2, Filter, X } from "lucide-react";
+import { QuickInsights } from "@/components/dashboard/QuickInsights";
+import { MarketPulse } from "@/components/dashboard/MarketPulse";
+import { MonitorRanking } from "@/components/dashboard/MonitorRanking";
+import { MarketTrendIndicator } from "@/components/dashboard/MarketTrendIndicator";
+import { EnhancedMonitorCard } from "@/components/dashboard/EnhancedMonitorCard";
+import { PeriodSelector } from "@/components/dashboard/PeriodSelector";
+import { Radio, TrendingUp, Activity, AlertTriangle, Loader2, X, Zap, Target } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -30,6 +36,8 @@ interface MonitorWithData {
     timestamp: string;
     status: string;
   };
+  sparklineData: number[];
+  change24h: number;
 }
 
 interface Group {
@@ -47,6 +55,16 @@ interface Reading {
   status: 'ok' | 'falha';
 }
 
+interface Insight {
+  id: string;
+  type: 'alert' | 'growth' | 'decline' | 'info' | 'opportunity';
+  title: string;
+  description: string;
+  priority: 'high' | 'medium' | 'low';
+  monitorName?: string;
+  value?: number;
+}
+
 function DashboardContent() {
   const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
@@ -56,12 +74,16 @@ function DashboardContent() {
   const [chartData, setChartData] = useState<{ time: string; value: number }[]>([]);
   const [selectedMonitorId, setSelectedMonitorId] = useState<string | null>(null);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [period, setPeriod] = useState("24h");
+  const [allReadingsRaw, setAllReadingsRaw] = useState<any[]>([]);
   const [stats, setStats] = useState({
     activeMonitors: 0,
     totalMonitors: 0,
     totalAds: 0,
+    totalAds24hAgo: 0,
     readingsToday: 0,
     successRate: 0,
+    avgAdsLast30d: 0,
   });
 
   useEffect(() => {
@@ -99,27 +121,60 @@ function DashboardContent() {
 
         const monitorIds = monitorsData?.map(m => m.id) || [];
 
-        // Fetch latest readings
+        // Fetch readings from last 30 days for historical data
         let readingsMap: Record<string, any> = {};
         let allReadings: any[] = [];
+        let readings24hAgoMap: Record<string, number> = {};
 
         if (monitorIds.length > 0) {
+          const thirtyDaysAgo = new Date();
+          thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
           const { data: readingsData } = await supabase
             .from('readings')
             .select('*')
             .in('monitor_id', monitorIds)
-            .order('timestamp', { ascending: false })
-            .limit(100);
+            .gte('timestamp', thirtyDaysAgo.toISOString())
+            .order('timestamp', { ascending: false });
 
           if (readingsData) {
             allReadings = readingsData;
+            setAllReadingsRaw(readingsData);
+
+            // Get latest reading per monitor
             readingsData.forEach((reading) => {
               if (!readingsMap[reading.monitor_id]) {
                 readingsMap[reading.monitor_id] = reading;
               }
             });
+
+            // Get readings from ~24h ago for comparison
+            const twentyFourHoursAgo = Date.now() - 24 * 60 * 60 * 1000;
+            readingsData.forEach((reading) => {
+              const readingTime = new Date(reading.timestamp).getTime();
+              if (readingTime <= twentyFourHoursAgo && !readings24hAgoMap[reading.monitor_id]) {
+                readings24hAgoMap[reading.monitor_id] = reading.ads_active_count;
+              }
+            });
           }
         }
+
+        // Create sparkline data and calculate change for each monitor
+        const monitorSparklines: Record<string, number[]> = {};
+        const monitorChanges: Record<string, number> = {};
+
+        monitorIds.forEach(id => {
+          const monitorReadings = allReadings
+            .filter(r => r.monitor_id === id)
+            .slice(0, 24)
+            .reverse();
+          
+          monitorSparklines[id] = monitorReadings.map(r => r.ads_active_count);
+
+          const current = readingsMap[id]?.ads_active_count || 0;
+          const previous = readings24hAgoMap[id] || current;
+          monitorChanges[id] = previous > 0 ? Math.round(((current - previous) / previous) * 100) : 0;
+        });
 
         // Transform monitors
         const transformedMonitors: MonitorWithData[] = (monitorsData || []).map((m) => ({
@@ -135,6 +190,8 @@ function DashboardContent() {
             timestamp: readingsMap[m.id].timestamp,
             status: readingsMap[m.id].status,
           } : undefined,
+          sparklineData: monitorSparklines[m.id] || [],
+          change24h: monitorChanges[m.id] || 0,
         }));
 
         setMonitors(transformedMonitors);
@@ -160,6 +217,7 @@ function DashboardContent() {
         // Calculate stats
         const activeCount = transformedMonitors.filter(m => m.is_active).length;
         const totalAds = transformedMonitors.reduce((sum, m) => sum + (m.latest_reading?.ads_active_count || 0), 0);
+        const totalAds24hAgo = Object.values(readings24hAgoMap).reduce((sum, val) => sum + val, 0);
         
         const today = new Date().toISOString().split('T')[0];
         const todayReadings = allReadings.filter(r => r.timestamp.startsWith(today));
@@ -168,17 +226,24 @@ function DashboardContent() {
           ? Math.round((successReadings.length / todayReadings.length) * 100)
           : 100;
 
+        // Calculate 30-day average
+        const avgAdsLast30d = allReadings.length > 0
+          ? allReadings.reduce((sum, r) => sum + r.ads_active_count, 0) / allReadings.length
+          : 0;
+
         setStats({
           activeMonitors: activeCount,
           totalMonitors: transformedMonitors.length,
           totalAds,
+          totalAds24hAgo,
           readingsToday: todayReadings.length,
           successRate,
+          avgAdsLast30d,
         });
 
         // Create chart data (hourly aggregation)
         const hourlyData: Record<string, number[]> = {};
-        allReadings.forEach((r) => {
+        allReadings.slice(0, 100).forEach((r) => {
           const hour = new Date(r.timestamp).getHours();
           const hourKey = `${hour.toString().padStart(2, '0')}:00`;
           if (!hourlyData[hourKey]) hourlyData[hourKey] = [];
@@ -203,14 +268,105 @@ function DashboardContent() {
     fetchData();
   }, [user]);
 
-  const getTimeAgo = (timestamp: string) => {
-    const diff = Date.now() - new Date(timestamp).getTime();
-    const minutes = Math.floor(diff / 60000);
-    if (minutes < 60) return `há ${minutes} min`;
-    const hours = Math.floor(minutes / 60);
-    if (hours < 24) return `há ${hours}h`;
-    return `há ${Math.floor(hours / 24)}d`;
-  };
+  // Calculate derived data
+  const { insights, marketPulse, rankings, marketTrend } = useMemo(() => {
+    const insights: Insight[] = [];
+    
+    // Generate insights based on monitor changes
+    monitors.forEach(m => {
+      if (m.change24h >= 20) {
+        insights.push({
+          id: `growth-${m.id}`,
+          type: 'growth',
+          title: `${m.name} escalando`,
+          description: `Aumento de ${m.change24h}% nas últimas 24h. Pode estar testando novos criativos.`,
+          priority: m.change24h >= 50 ? 'high' : 'medium',
+          monitorName: m.name,
+          value: m.change24h,
+        });
+      } else if (m.change24h <= -20) {
+        insights.push({
+          id: `decline-${m.id}`,
+          type: 'decline',
+          title: `${m.name} em queda`,
+          description: `Redução de ${Math.abs(m.change24h)}% nas últimas 24h. Possível pausa de campanhas.`,
+          priority: m.change24h <= -40 ? 'high' : 'medium',
+          monitorName: m.name,
+          value: m.change24h,
+        });
+      }
+    });
+
+    // Sort insights by priority
+    insights.sort((a, b) => {
+      const priorityOrder = { high: 0, medium: 1, low: 2 };
+      return priorityOrder[a.priority] - priorityOrder[b.priority];
+    });
+
+    // Calculate market pulse
+    const totalChange = stats.totalAds24hAgo > 0 
+      ? ((stats.totalAds - stats.totalAds24hAgo) / stats.totalAds24hAgo) * 100 
+      : 0;
+    
+    const avgComparison = stats.avgAdsLast30d > 0
+      ? ((stats.totalAds - stats.avgAdsLast30d) / stats.avgAdsLast30d) * 100
+      : 0;
+
+    // Temperature based on activity and growth
+    const activeRatio = stats.totalMonitors > 0 ? stats.activeMonitors / stats.totalMonitors : 0;
+    const growthNormalized = Math.min(Math.max((totalChange + 50) / 100, 0), 1);
+    const temperature = Math.round((activeRatio * 40) + (growthNormalized * 40) + (stats.successRate / 100 * 20));
+
+    const marketPulse = {
+      temperature,
+      trend: totalChange > 2 ? 'up' as const : totalChange < -2 ? 'down' as const : 'stable' as const,
+      avgComparison,
+    };
+
+    // Rankings
+    const topByAds = [...monitors]
+      .filter(m => m.latest_reading)
+      .sort((a, b) => (b.latest_reading?.ads_active_count || 0) - (a.latest_reading?.ads_active_count || 0))
+      .slice(0, 3)
+      .map(m => ({
+        id: m.id,
+        name: m.name,
+        value: m.latest_reading?.ads_active_count || 0,
+        change: m.change24h,
+      }));
+
+    const rising = [...monitors]
+      .filter(m => m.change24h > 0)
+      .sort((a, b) => b.change24h - a.change24h)
+      .slice(0, 3)
+      .map(m => ({
+        id: m.id,
+        name: m.name,
+        value: m.change24h,
+        change: m.change24h,
+      }));
+
+    const falling = [...monitors]
+      .filter(m => m.change24h < 0)
+      .sort((a, b) => a.change24h - b.change24h)
+      .slice(0, 3)
+      .map(m => ({
+        id: m.id,
+        name: m.name,
+        value: Math.abs(m.change24h),
+        change: m.change24h,
+      }));
+
+    const rankings = { topByAds, rising, falling };
+
+    // Market trend
+    const marketTrend = {
+      trend: totalChange > 5 ? 'up' as const : totalChange < -5 ? 'down' as const : 'stable' as const,
+      percentage: totalChange,
+    };
+
+    return { insights, marketPulse, rankings, marketTrend };
+  }, [monitors, stats]);
 
   // Filter monitors based on selection
   const filteredMonitors = monitors.filter(m => {
@@ -232,6 +388,35 @@ function DashboardContent() {
   const clearFilters = () => {
     setSelectedMonitorId(null);
     setSelectedGroupId(null);
+  };
+
+  // Calculate 24h change percentage
+  const change24h = stats.totalAds24hAgo > 0
+    ? Math.round(((stats.totalAds - stats.totalAds24hAgo) / stats.totalAds24hAgo) * 100)
+    : 0;
+
+  // Get top performer
+  const topPerformer = monitors.reduce((top, m) => {
+    if (!m.latest_reading) return top;
+    if (!top || m.latest_reading.ads_active_count > (top.latest_reading?.ads_active_count || 0)) {
+      return m;
+    }
+    return top;
+  }, null as MonitorWithData | null);
+
+  // Get biggest mover
+  const biggestMover = monitors.reduce((biggest, m) => {
+    if (!biggest || Math.abs(m.change24h) > Math.abs(biggest.change24h)) {
+      return m;
+    }
+    return biggest;
+  }, null as MonitorWithData | null);
+
+  const handleViewCreatives = (monitorUrl: string) => {
+    const urlWithSort = monitorUrl.includes('?') 
+      ? `${monitorUrl}&sort_data[direction]=desc&sort_data[mode]=relevancy_monthly_grouped`
+      : `${monitorUrl}?sort_data[direction]=desc&sort_data[mode]=relevancy_monthly_grouped`;
+    window.open(urlWithSort, '_blank');
   };
 
   if (isLoading) {
@@ -260,6 +445,7 @@ function DashboardContent() {
             </p>
           </div>
           <div className="flex items-center gap-3">
+            <PeriodSelector value={period} onChange={setPeriod} />
             <Select
               value={selectedGroupId || "all-groups"}
               onValueChange={(value) => {
@@ -314,7 +500,7 @@ function DashboardContent() {
           </div>
         </div>
 
-        {/* Metric Cards */}
+        {/* Metric Cards - Row 1 */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <MetricCard
             title="Monitores Ativos"
@@ -326,6 +512,14 @@ function DashboardContent() {
             title="Total de Anúncios"
             value={filteredStats.totalAds.toLocaleString('pt-BR')}
             icon={<TrendingUp className="h-5 w-5" />}
+            trend={change24h !== 0 ? { value: change24h, label: "vs 24h" } : undefined}
+          />
+          <MetricCard
+            title="Média por Monitor"
+            value={filteredStats.totalMonitors > 0 
+              ? Math.round(filteredStats.totalAds / filteredStats.totalMonitors).toLocaleString('pt-BR')
+              : '0'}
+            icon={<Target className="h-5 w-5" />}
           />
           <MetricCard
             title="Leituras Hoje"
@@ -333,11 +527,88 @@ function DashboardContent() {
             subtitle={`${stats.successRate}% de sucesso`}
             icon={<Activity className="h-5 w-5" />}
           />
-          <MetricCard
-            title="Alertas"
-            value="0"
-            subtitle="Nenhum alerta ativo"
-            icon={<AlertTriangle className="h-5 w-5" />}
+        </div>
+
+        {/* Market Overview Row */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {/* Market Trend Indicator */}
+          <MarketTrendIndicator 
+            trend={marketTrend.trend} 
+            percentage={marketTrend.percentage} 
+            period="24h"
+          />
+
+          {/* Top Performer Card */}
+          {topPerformer && (
+            <div className="metric-card">
+              <div className="flex items-center gap-2 mb-2">
+                <Zap className="h-4 w-4 text-warning" />
+                <span className="text-sm font-medium text-muted-foreground">Maior Volume</span>
+              </div>
+              <p className="text-lg font-bold text-foreground truncate">{topPerformer.name}</p>
+              <p className="text-2xl font-bold text-primary">
+                {topPerformer.latest_reading?.ads_active_count.toLocaleString('pt-BR')} ads
+              </p>
+            </div>
+          )}
+
+          {/* Biggest Mover Card */}
+          {biggestMover && biggestMover.change24h !== 0 && (
+            <div className="metric-card">
+              <div className="flex items-center gap-2 mb-2">
+                <AlertTriangle className="h-4 w-4 text-warning" />
+                <span className="text-sm font-medium text-muted-foreground">Maior Movimento</span>
+              </div>
+              <p className="text-lg font-bold text-foreground truncate">{biggestMover.name}</p>
+              <p className={`text-2xl font-bold ${biggestMover.change24h > 0 ? 'text-success' : 'text-destructive'}`}>
+                {biggestMover.change24h > 0 ? '+' : ''}{biggestMover.change24h}%
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Quick Insights + Market Pulse Row */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          {/* Quick Insights */}
+          <Card className="lg:col-span-2">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base font-semibold flex items-center gap-2">
+                <Zap className="h-4 w-4 text-primary" />
+                Insights Rápidos
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <QuickInsights insights={insights} />
+            </CardContent>
+          </Card>
+
+          {/* Market Pulse */}
+          <MarketPulse 
+            temperature={marketPulse.temperature}
+            trend={marketPulse.trend}
+            avgComparison={marketPulse.avgComparison}
+          />
+        </div>
+
+        {/* Rankings Row */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <MonitorRanking 
+            title="Top por Volume"
+            type="top"
+            monitors={rankings.topByAds}
+            valueLabel="ads"
+          />
+          <MonitorRanking 
+            title="Mais Cresceram (24h)"
+            type="rising"
+            monitors={rankings.rising}
+            valueLabel="%"
+          />
+          <MonitorRanking 
+            title="Mais Caíram (24h)"
+            type="falling"
+            monitors={rankings.falling}
+            valueLabel="%"
           />
         </div>
 
@@ -368,21 +639,18 @@ function DashboardContent() {
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
               {filteredMonitors.slice(0, 8).map((monitor) => (
-                <div
+                <EnhancedMonitorCard
                   key={monitor.id}
-                  className="cursor-pointer"
-                  onClick={() => setSelectedMonitorId(monitor.id)}
-                >
-                  <MonitorStatusCard
-                    name={monitor.name}
-                    url={monitor.ad_library_url}
-                    currentCount={monitor.latest_reading?.ads_active_count || 0}
-                    lastReading={monitor.latest_reading ? getTimeAgo(monitor.latest_reading.timestamp) : 'Sem leitura'}
-                    trend={0}
-                    tags={monitor.tags}
-                    status={monitor.is_active ? 'active' : 'inactive'}
-                  />
-                </div>
+                  id={monitor.id}
+                  name={monitor.name}
+                  url={monitor.ad_library_url}
+                  currentCount={monitor.latest_reading?.ads_active_count || 0}
+                  trend={monitor.change24h}
+                  sparklineData={monitor.sparklineData}
+                  tags={monitor.tags}
+                  status={monitor.is_active ? 'active' : 'inactive'}
+                  onViewCreatives={() => handleViewCreatives(monitor.ad_library_url)}
+                />
               ))}
             </div>
           </div>
