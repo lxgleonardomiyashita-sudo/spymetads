@@ -40,7 +40,7 @@ export function ActiveAdsLineChart({ data, title }: ActiveAdsLineChartProps) {
       {title && (
         <h3 className="text-lg font-semibold text-foreground mb-4">{title}</h3>
       )}
-      <div className="chart-container h-[300px]">
+      <div className="chart-container h-[220px]">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
             <defs>
