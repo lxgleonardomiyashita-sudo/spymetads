@@ -939,10 +939,20 @@ function DashboardContent() {
           {/* Monitor Status Cards */}
           {!comparisonMode && filteredMonitors.length > 0 && (
             <div className="-mt-4">
-              <h2 className="text-lg font-semibold text-foreground mb-3">
-                Status dos Monitores
-                {selectedGroup && <span className="text-muted-foreground font-normal ml-2">({selectedGroup.name})</span>}
-              </h2>
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-lg font-semibold text-foreground">
+                  Status dos Monitores
+                  {selectedGroup && <span className="text-muted-foreground font-normal ml-2">({selectedGroup.name})</span>}
+                </h2>
+                {selectedMonitorId && (
+                  <button
+                    onClick={() => setSelectedMonitorId(null)}
+                    className="text-sm text-primary hover:text-primary/80 font-medium transition-colors"
+                  >
+                    Ver todos
+                  </button>
+                )}
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
                 {filteredMonitors.slice(0, 8).map((monitor) => (
                   <EnhancedMonitorCard
