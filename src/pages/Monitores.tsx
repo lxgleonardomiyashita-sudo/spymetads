@@ -492,6 +492,15 @@ function MonitoresContent() {
                 <Button
                   variant="outline"
                   size="sm"
+                  onClick={() => window.open(monitor.ad_library_url, '_blank')}
+                  className="h-8"
+                  title="Abrir Ad Library"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
                   onClick={() => scrapeMonitor(monitor.id, monitor.ad_library_url, monitor.name)}
                   disabled={scrapingMonitors.has(monitor.id)}
                   className="h-8"
