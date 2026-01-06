@@ -10,6 +10,7 @@ import {
   XAxis,
   YAxis,
   CartesianGrid,
+  LabelList,
 } from "recharts";
 
 interface GroupDistribution {
@@ -141,6 +142,13 @@ export function DistributionCharts({ groupDistribution, tagDistribution }: Distr
                           fill={TAG_COLORS[entry.type] || TAG_COLORS.custom} 
                         />
                       ))}
+                      <LabelList 
+                        dataKey="value" 
+                        position="right" 
+                        fill="hsl(var(--foreground))"
+                        fontSize={11}
+                        formatter={(value: number) => value.toLocaleString("pt-BR")}
+                      />
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
