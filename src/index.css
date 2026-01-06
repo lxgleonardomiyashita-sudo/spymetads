@@ -121,12 +121,18 @@
 
   .metric-card::before {
     content: '';
-    @apply absolute inset-0 opacity-0 transition-opacity duration-300;
+    @apply absolute inset-0 opacity-0 transition-opacity duration-300 pointer-events-none;
     background: linear-gradient(135deg, hsl(190 95% 55% / 0.1), transparent);
+    z-index: 0;
   }
 
   .metric-card:hover::before {
     @apply opacity-100;
+  }
+
+  .metric-card > * {
+    @apply relative;
+    z-index: 1;
   }
 
   /* Tag chips */
