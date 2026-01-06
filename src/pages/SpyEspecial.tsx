@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { AppLayout } from "@/components/layout/AppLayout";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +11,7 @@ import { TagChip } from "@/components/ui/tag-chip";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
+import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { 
   Star, 
   Trash2, 
@@ -21,11 +22,13 @@ import {
   TrendingDown,
   Activity,
   BarChart3,
-  Calendar
+  Calendar,
+  Loader2
 } from "lucide-react";
 import { format, subDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { MonitorInsightsDialog } from "@/components/monitors/MonitorInsightsDialog";
+import { getPriorityColor } from "@/lib/formatters";
 import {
   ResponsiveContainer,
   LineChart,
@@ -39,7 +42,7 @@ import {
   Cell,
 } from "recharts";
 
-export default function SpyEspecial() {
+function SpyEspecialContent() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState("");
@@ -72,6 +75,7 @@ export default function SpyEspecial() {
       return data || [];
     },
     enabled: !!user,
+    staleTime: 1000 * 60 * 5,
   });
 
   // Fetch readings for saved monitors
@@ -94,6 +98,7 @@ export default function SpyEspecial() {
       return data || [];
     },
     enabled: savedMonitors.length > 0,
+    staleTime: 1000 * 60 * 5,
   });
 
   // Fetch groups for filter
@@ -108,6 +113,7 @@ export default function SpyEspecial() {
       return data || [];
     },
     enabled: !!user,
+    staleTime: 1000 * 60 * 5,
   });
 
   // Remove from saved
@@ -122,6 +128,7 @@ export default function SpyEspecial() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["saved-monitors"] });
+      queryClient.invalidateQueries({ queryKey: ["saved-monitor-ids"] });
       toast.success("Monitor removido do Spy Especial");
     },
     onError: () => {
@@ -219,24 +226,6 @@ export default function SpyEspecial() {
     };
   }, [filteredMonitors, readings]);
 
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case "high": return "text-red-500 bg-red-500/10";
-      case "medium": return "text-yellow-500 bg-yellow-500/10";
-      case "low": return "text-green-500 bg-green-500/10";
-      default: return "text-muted-foreground bg-muted";
-    }
-  };
-
-  const getPriorityLabel = (priority: string) => {
-    switch (priority) {
-      case "high": return "Alta";
-      case "medium": return "Média";
-      case "low": return "Baixa";
-      default: return priority;
-    }
-  };
-
   return (
     <AppLayout>
       <div className="space-y-6">
@@ -305,8 +294,8 @@ export default function SpyEspecial() {
           {/* Monitors Tab */}
           <TabsContent value="monitors" className="space-y-4">
             {isLoading ? (
-              <div className="text-center py-12 text-muted-foreground">
-                Carregando...
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
               </div>
             ) : filteredMonitors.length === 0 ? (
               <Card className="bg-card border-border">
@@ -461,25 +450,23 @@ export default function SpyEspecial() {
                   <Card className="bg-card border-border">
                     <CardContent className="p-4">
                       <div className="flex items-center gap-2 text-muted-foreground text-sm">
-                        {parseFloat(analytics.growthRate) >= 0 ? (
-                          <TrendingUp className="h-4 w-4 text-green-500" />
+                        {Number(analytics.growthRate) >= 0 ? (
+                          <TrendingUp className="h-4 w-4 text-success" />
                         ) : (
-                          <TrendingDown className="h-4 w-4 text-red-500" />
+                          <TrendingDown className="h-4 w-4 text-destructive" />
                         )}
                         Crescimento 7d
                       </div>
-                      <div className={`text-2xl font-bold mt-1 ${
-                        parseFloat(analytics.growthRate) >= 0 ? "text-green-500" : "text-red-500"
-                      }`}>
-                        {parseFloat(analytics.growthRate) >= 0 ? "+" : ""}{analytics.growthRate}%
+                      <div className={`text-2xl font-bold mt-1 ${Number(analytics.growthRate) >= 0 ? 'text-success' : 'text-destructive'}`}>
+                        {Number(analytics.growthRate) >= 0 ? '+' : ''}{analytics.growthRate}%
                       </div>
                     </CardContent>
                   </Card>
                   <Card className="bg-card border-border">
                     <CardContent className="p-4">
                       <div className="flex items-center gap-2 text-muted-foreground text-sm">
-                        <Star className="h-4 w-4 text-yellow-500" />
-                        Monitores Salvos
+                        <Star className="h-4 w-4" />
+                        Monitores
                       </div>
                       <div className="text-2xl font-bold text-foreground mt-1">
                         {analytics.totalMonitors}
@@ -492,31 +479,34 @@ export default function SpyEspecial() {
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   {/* Activity Chart */}
                   <Card className="bg-card border-border">
-                    <CardHeader>
-                      <CardTitle className="text-sm font-medium text-muted-foreground">
-                        Atividade (últimos 14 dias)
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
+                    <CardContent className="p-4">
+                      <h3 className="font-semibold text-foreground mb-4">Atividade (últimos 14 dias)</h3>
                       <div className="h-[250px]">
                         <ResponsiveContainer width="100%" height="100%">
                           <LineChart data={analytics.chartData}>
                             <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                            <XAxis dataKey="date" stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                            <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                            <Tooltip
-                              contentStyle={{
-                                backgroundColor: "hsl(var(--card))",
-                                border: "1px solid hsl(var(--border))",
-                                borderRadius: "8px",
+                            <XAxis 
+                              dataKey="date" 
+                              stroke="hsl(var(--muted-foreground))"
+                              fontSize={12}
+                            />
+                            <YAxis 
+                              stroke="hsl(var(--muted-foreground))"
+                              fontSize={12}
+                            />
+                            <Tooltip 
+                              contentStyle={{ 
+                                backgroundColor: 'hsl(var(--card))',
+                                border: '1px solid hsl(var(--border))',
+                                borderRadius: '8px'
                               }}
                             />
                             <Line 
                               type="monotone" 
                               dataKey="value" 
-                              stroke="hsl(var(--primary))" 
+                              stroke="hsl(var(--primary))"
                               strokeWidth={2}
-                              dot={false}
+                              dot={{ fill: 'hsl(var(--primary))' }}
                             />
                           </LineChart>
                         </ResponsiveContainer>
@@ -526,34 +516,38 @@ export default function SpyEspecial() {
 
                   {/* Top Performers */}
                   <Card className="bg-card border-border">
-                    <CardHeader>
-                      <CardTitle className="text-sm font-medium text-muted-foreground">
-                        Top Performers
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
+                    <CardContent className="p-4">
+                      <h3 className="font-semibold text-foreground mb-4">Top Performers</h3>
                       <div className="h-[250px]">
                         <ResponsiveContainer width="100%" height="100%">
-                          <BarChart data={analytics.topPerformers} layout="vertical">
+                          <BarChart 
+                            data={analytics.topPerformers.map(p => ({
+                              name: p.monitor?.name?.slice(0, 15) || 'N/A',
+                              value: p.latestCount,
+                            }))}
+                            layout="vertical"
+                          >
                             <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                             <XAxis type="number" stroke="hsl(var(--muted-foreground))" fontSize={12} />
                             <YAxis 
                               type="category" 
-                              dataKey="monitor.name" 
-                              stroke="hsl(var(--muted-foreground))" 
-                              fontSize={11}
-                              width={120}
-                              tickFormatter={(value) => value?.length > 15 ? `${value.slice(0, 15)}...` : value}
+                              dataKey="name" 
+                              stroke="hsl(var(--muted-foreground))"
+                              fontSize={12}
+                              width={100}
                             />
-                            <Tooltip
-                              contentStyle={{
-                                backgroundColor: "hsl(var(--card))",
-                                border: "1px solid hsl(var(--border))",
-                                borderRadius: "8px",
+                            <Tooltip 
+                              contentStyle={{ 
+                                backgroundColor: 'hsl(var(--card))',
+                                border: '1px solid hsl(var(--border))',
+                                borderRadius: '8px'
                               }}
-                              formatter={(value: number) => [value.toLocaleString("pt-BR"), "Ads"]}
                             />
-                            <Bar dataKey="latestCount" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
+                            <Bar dataKey="value" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]}>
+                              {analytics.topPerformers.map((_, index) => (
+                                <Cell key={`cell-${index}`} fill={`hsl(var(--primary) / ${1 - index * 0.15})`} />
+                              ))}
+                            </Bar>
                           </BarChart>
                         </ResponsiveContainer>
                       </div>
@@ -566,21 +560,28 @@ export default function SpyEspecial() {
                 <CardContent className="py-12 text-center">
                   <BarChart3 className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
                   <p className="text-muted-foreground">
-                    Salve monitores para ver análises detalhadas
+                    Salve monitores para ver análises detalhadas.
                   </p>
                 </CardContent>
               </Card>
             )}
           </TabsContent>
         </Tabs>
-      </div>
 
-      {/* Insights Dialog */}
-      <MonitorInsightsDialog
-        monitor={selectedMonitorForInsights}
-        open={!!selectedMonitorForInsights}
-        onOpenChange={(open) => !open && setSelectedMonitorForInsights(null)}
-      />
+        <MonitorInsightsDialog
+          open={!!selectedMonitorForInsights}
+          onOpenChange={(open) => !open && setSelectedMonitorForInsights(null)}
+          monitor={selectedMonitorForInsights}
+        />
+      </div>
     </AppLayout>
+  );
+}
+
+export default function SpyEspecial() {
+  return (
+    <ProtectedRoute>
+      <SpyEspecialContent />
+    </ProtectedRoute>
   );
 }
