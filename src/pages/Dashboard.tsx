@@ -2,6 +2,8 @@ import { useState, useEffect, useMemo } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { ActiveAdsLineChart } from "@/components/charts/ActiveAdsLineChart";
+import { MultiLineChart, getChartColor } from "@/components/charts/MultiLineChart";
+import { ComparisonSidebar } from "@/components/dashboard/ComparisonSidebar";
 import { RecentReadingsTable } from "@/components/dashboard/RecentReadingsTable";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { QuickInsights } from "@/components/dashboard/QuickInsights";
@@ -10,7 +12,7 @@ import { MonitorRanking } from "@/components/dashboard/MonitorRanking";
 import { MarketTrendIndicator } from "@/components/dashboard/MarketTrendIndicator";
 import { EnhancedMonitorCard } from "@/components/dashboard/EnhancedMonitorCard";
 import { PeriodSelector } from "@/components/dashboard/PeriodSelector";
-import { Radio, TrendingUp, Activity, AlertTriangle, Loader2, X, Zap, Target } from "lucide-react";
+import { Radio, TrendingUp, Activity, AlertTriangle, Loader2, X, Zap, Target, BarChart3 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -65,17 +67,32 @@ interface Insight {
   value?: number;
 }
 
+interface TagWithTotal {
+  id: string;
+  name: string;
+  type: string;
+  totalAds: number;
+}
+
 function DashboardContent() {
   const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [monitors, setMonitors] = useState<MonitorWithData[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
+  const [tags, setTags] = useState<TagWithTotal[]>([]);
   const [readings, setReadings] = useState<Reading[]>([]);
   const [chartData, setChartData] = useState<{ time: string; value: number }[]>([]);
   const [selectedMonitorId, setSelectedMonitorId] = useState<string | null>(null);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [period, setPeriod] = useState("24h");
   const [allReadingsRaw, setAllReadingsRaw] = useState<any[]>([]);
+  
+  // Comparison mode state
+  const [comparisonMode, setComparisonMode] = useState(false);
+  const [comparisonSidebarOpen, setComparisonSidebarOpen] = useState(false);
+  const [comparisonGroupByMode, setComparisonGroupByMode] = useState<'group' | 'tag'>('group');
+  const [comparisonSelectedIds, setComparisonSelectedIds] = useState<string[]>([]);
+  
   const [stats, setStats] = useState({
     activeMonitors: 0,
     totalMonitors: 0,
@@ -195,6 +212,26 @@ function DashboardContent() {
         }));
 
         setMonitors(transformedMonitors);
+
+        // Extract and calculate tags with totals
+        const tagTotals: Record<string, { name: string; type: string; total: number }> = {};
+        transformedMonitors.forEach(m => {
+          const monitorAds = m.latest_reading?.ads_active_count || 0;
+          m.tags.forEach((t: any) => {
+            if (t?.id) {
+              if (!tagTotals[t.id]) {
+                tagTotals[t.id] = { name: t.name, type: t.type, total: 0 };
+              }
+              tagTotals[t.id].total += monitorAds;
+            }
+          });
+        });
+        setTags(Object.entries(tagTotals).map(([id, data]) => ({
+          id,
+          name: data.name,
+          type: data.type,
+          totalAds: data.total,
+        })));
 
         // Create monitor name map
         const monitorNameMap: Record<string, string> = {};
@@ -506,6 +543,139 @@ function DashboardContent() {
     setSelectedGroupId(null);
   };
 
+  // Toggle comparison mode
+  const toggleComparisonMode = () => {
+    const newMode = !comparisonMode;
+    setComparisonMode(newMode);
+    if (newMode) {
+      setComparisonSidebarOpen(true);
+      // Clear single filters when entering comparison mode
+      setSelectedMonitorId(null);
+      setSelectedGroupId(null);
+    } else {
+      setComparisonSidebarOpen(false);
+      setComparisonSelectedIds([]);
+    }
+  };
+
+  // Calculate groups with totals for comparison
+  const groupsWithTotals = useMemo(() => {
+    return groups.map(g => {
+      const groupMonitors = monitors.filter(m => m.group_id === g.id);
+      const totalAds = groupMonitors.reduce((sum, m) => sum + (m.latest_reading?.ads_active_count || 0), 0);
+      return { ...g, totalAds };
+    });
+  }, [groups, monitors]);
+
+  // Calculate comparison chart series
+  const comparisonChartSeries = useMemo(() => {
+    if (!comparisonMode || comparisonSelectedIds.length === 0) return [];
+
+    const periodMs: Record<string, number> = {
+      '24h': 24 * 60 * 60 * 1000,
+      '48h': 48 * 60 * 60 * 1000,
+      '7d': 7 * 24 * 60 * 60 * 1000,
+      '14d': 14 * 24 * 60 * 60 * 1000,
+      '30d': 30 * 24 * 60 * 60 * 1000,
+    };
+    const now = Date.now();
+    const maxAge = periodMs[period] || periodMs['24h'];
+    const isLongPeriod = period === '7d' || period === '14d' || period === '30d';
+
+    // Filter readings by period
+    const periodReadings = allReadingsRaw.filter(r => {
+      const age = now - new Date(r.timestamp).getTime();
+      return age <= maxAge;
+    });
+
+    if (comparisonGroupByMode === 'group') {
+      return comparisonSelectedIds.map((groupId, index) => {
+        const group = groups.find(g => g.id === groupId);
+        if (!group) return null;
+
+        const groupMonitorIds = new Set(monitors.filter(m => m.group_id === groupId).map(m => m.id));
+        const groupReadings = periodReadings.filter(r => groupMonitorIds.has(r.monitor_id));
+
+        // Aggregate by time
+        const dataByTime: Record<string, number[]> = {};
+        groupReadings.forEach(r => {
+          const date = new Date(r.timestamp);
+          const key = isLongPeriod
+            ? date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+            : `${date.getHours().toString().padStart(2, '0')}:00`;
+          if (!dataByTime[key]) dataByTime[key] = [];
+          dataByTime[key].push(r.ads_active_count);
+        });
+
+        const data = Object.entries(dataByTime)
+          .map(([time, values]) => ({
+            time,
+            value: Math.round(values.reduce((a, b) => a + b, 0) / values.length),
+          }))
+          .sort((a, b) => {
+            if (isLongPeriod) {
+              const [dayA, monthA] = a.time.split('/').map(Number);
+              const [dayB, monthB] = b.time.split('/').map(Number);
+              return monthA !== monthB ? monthA - monthB : dayA - dayB;
+            }
+            return a.time.localeCompare(b.time);
+          });
+
+        return {
+          id: groupId,
+          name: group.name,
+          color: getChartColor(index),
+          data,
+        };
+      }).filter(Boolean) as any[];
+    } else {
+      // Group by tag
+      return comparisonSelectedIds.map((tagId, index) => {
+        const tag = tags.find(t => t.id === tagId);
+        if (!tag) return null;
+
+        const tagMonitorIds = new Set(
+          monitors
+            .filter(m => m.tags.some((t: any) => t?.id === tagId))
+            .map(m => m.id)
+        );
+        const tagReadings = periodReadings.filter(r => tagMonitorIds.has(r.monitor_id));
+
+        // Aggregate by time
+        const dataByTime: Record<string, number[]> = {};
+        tagReadings.forEach(r => {
+          const date = new Date(r.timestamp);
+          const key = isLongPeriod
+            ? date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+            : `${date.getHours().toString().padStart(2, '0')}:00`;
+          if (!dataByTime[key]) dataByTime[key] = [];
+          dataByTime[key].push(r.ads_active_count);
+        });
+
+        const data = Object.entries(dataByTime)
+          .map(([time, values]) => ({
+            time,
+            value: Math.round(values.reduce((a, b) => a + b, 0) / values.length),
+          }))
+          .sort((a, b) => {
+            if (isLongPeriod) {
+              const [dayA, monthA] = a.time.split('/').map(Number);
+              const [dayB, monthB] = b.time.split('/').map(Number);
+              return monthA !== monthB ? monthA - monthB : dayA - dayB;
+            }
+            return a.time.localeCompare(b.time);
+          });
+
+        return {
+          id: tagId,
+          name: tag.name,
+          color: getChartColor(index),
+          data,
+        };
+      }).filter(Boolean) as any[];
+    }
+  }, [comparisonMode, comparisonSelectedIds, comparisonGroupByMode, allReadingsRaw, period, monitors, groups, tags]);
+
   // Get top performer
   const topPerformer = monitors.reduce((top, m) => {
     if (!m.latest_reading) return top;
@@ -542,74 +712,94 @@ function DashboardContent() {
 
   return (
     <AppLayout>
-      <div className="space-y-6 fade-in">
-        {/* Header with Filters */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
-            <p className="text-muted-foreground mt-1">
-              {selectedMonitor
-                ? `Dados de: ${selectedMonitor.name}`
-                : selectedGroup
-                ? `Grupo: ${selectedGroup.name}`
-                : 'Visão geral dos seus monitores de anúncios'}
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <PeriodSelector value={period} onChange={setPeriod} />
-            <Select
-              value={selectedGroupId || "all-groups"}
-              onValueChange={(value) => {
-                if (value === "all-groups") {
-                  setSelectedGroupId(null);
-                } else {
-                  setSelectedGroupId(value);
-                  setSelectedMonitorId(null);
-                }
-              }}
-            >
-              <SelectTrigger className="w-[160px] bg-card border-border">
-                <SelectValue placeholder="Grupo" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all-groups">Todos os grupos</SelectItem>
-                {groups.map(group => (
-                  <SelectItem key={group.id} value={group.id}>
-                    {group.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select
-              value={selectedMonitorId || "all-monitors"}
-              onValueChange={(value) => {
-                if (value === "all-monitors") {
-                  setSelectedMonitorId(null);
-                } else {
-                  setSelectedMonitorId(value);
-                  setSelectedGroupId(null);
-                }
-              }}
-            >
-              <SelectTrigger className="w-[180px] bg-card border-border">
-                <SelectValue placeholder="Monitor" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all-monitors">Todos os monitores</SelectItem>
-                {monitors.map(monitor => (
-                  <SelectItem key={monitor.id} value={monitor.id}>
-                    {monitor.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {(selectedMonitorId || selectedGroupId) && (
-              <Button variant="ghost" size="icon" onClick={clearFilters}>
-                <X className="h-4 w-4" />
+      <div className="flex h-full">
+        {/* Main Content */}
+        <div className={`flex-1 space-y-6 fade-in ${comparisonSidebarOpen ? 'pr-0' : ''}`}>
+          {/* Header with Filters */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
+              <p className="text-muted-foreground mt-1">
+                {comparisonMode
+                  ? `Comparando ${comparisonSelectedIds.length} ${comparisonGroupByMode === 'group' ? 'grupos' : 'tags'}`
+                  : selectedMonitor
+                  ? `Dados de: ${selectedMonitor.name}`
+                  : selectedGroup
+                  ? `Grupo: ${selectedGroup.name}`
+                  : 'Visão geral dos seus monitores de anúncios'}
+              </p>
+            </div>
+            <div className="flex items-center gap-3 flex-wrap">
+              <PeriodSelector value={period} onChange={setPeriod} />
+              
+              {/* Comparison Toggle Button */}
+              <Button
+                variant={comparisonMode ? 'default' : 'outline'}
+                size="sm"
+                onClick={toggleComparisonMode}
+                className="gap-2"
+              >
+                <BarChart3 className="h-4 w-4" />
+                Comparativo
               </Button>
-            )}
+
+              {!comparisonMode && (
+                <>
+                  <Select
+                    value={selectedGroupId || "all-groups"}
+                    onValueChange={(value) => {
+                      if (value === "all-groups") {
+                        setSelectedGroupId(null);
+                      } else {
+                        setSelectedGroupId(value);
+                        setSelectedMonitorId(null);
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="w-[160px] bg-card border-border">
+                      <SelectValue placeholder="Grupo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all-groups">Todos os grupos</SelectItem>
+                      {groups.map(group => (
+                        <SelectItem key={group.id} value={group.id}>
+                          {group.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select
+                    value={selectedMonitorId || "all-monitors"}
+                    onValueChange={(value) => {
+                      if (value === "all-monitors") {
+                        setSelectedMonitorId(null);
+                      } else {
+                        setSelectedMonitorId(value);
+                        setSelectedGroupId(null);
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="w-[180px] bg-card border-border">
+                      <SelectValue placeholder="Monitor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all-monitors">Todos os monitores</SelectItem>
+                      {monitors.map(monitor => (
+                        <SelectItem key={monitor.id} value={monitor.id}>
+                          {monitor.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {(selectedMonitorId || selectedGroupId) && (
+                    <Button variant="ghost" size="icon" onClick={clearFilters}>
+                      <X className="h-4 w-4" />
+                    </Button>
+                  )}
+                </>
+              )}
+            </div>
           </div>
-        </div>
 
         {/* Metric Cards - Row 1 */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -723,66 +913,88 @@ function DashboardContent() {
           />
         </div>
 
-        {/* Chart */}
-        {filteredChartData.length > 0 ? (
-          <ActiveAdsLineChart
-            data={filteredChartData}
-            title={selectedMonitor 
-              ? `Anúncios Ativos - ${selectedMonitor.name}` 
-              : selectedGroup
-              ? `Anúncios Ativos - Grupo ${selectedGroup.name}`
-              : `Anúncios Ativos - ${period === '24h' ? 'Últimas 24 horas' : period === '48h' ? 'Últimas 48 horas' : period === '7d' ? 'Últimos 7 dias' : period === '14d' ? 'Últimos 14 dias' : 'Últimos 30 dias'}`}
-          />
-        ) : (
-          <div className="metric-card flex items-center justify-center h-[300px]">
-            <p className="text-muted-foreground">
-              Nenhum dado de leitura disponível ainda
-            </p>
-          </div>
-        )}
-
-        {/* Monitor Status Cards */}
-        {filteredMonitors.length > 0 && (
-          <div>
-            <h2 className="text-lg font-semibold text-foreground mb-4">
-              Status dos Monitores
-              {selectedGroup && <span className="text-muted-foreground font-normal ml-2">({selectedGroup.name})</span>}
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
-              {filteredMonitors.slice(0, 8).map((monitor) => (
-                <EnhancedMonitorCard
-                  key={monitor.id}
-                  id={monitor.id}
-                  name={monitor.name}
-                  url={monitor.ad_library_url}
-                  currentCount={monitor.latest_reading?.ads_active_count || 0}
-                  trend={monitor.change24h}
-                  sparklineData={monitor.sparklineData}
-                  tags={monitor.tags}
-                  status={monitor.is_active ? 'active' : 'inactive'}
-                  onViewCreatives={() => handleViewCreatives(monitor.ad_library_url)}
-                />
-              ))}
+          {/* Chart Section */}
+          {comparisonMode ? (
+            <MultiLineChart
+              series={comparisonChartSeries}
+              title={`Comparativo por ${comparisonGroupByMode === 'group' ? 'Grupo' : 'Tag'} - ${period === '24h' ? 'Últimas 24 horas' : period === '48h' ? 'Últimas 48 horas' : period === '7d' ? 'Últimos 7 dias' : period === '14d' ? 'Últimos 14 dias' : 'Últimos 30 dias'}`}
+            />
+          ) : filteredChartData.length > 0 ? (
+            <ActiveAdsLineChart
+              data={filteredChartData}
+              title={selectedMonitor 
+                ? `Anúncios Ativos - ${selectedMonitor.name}` 
+                : selectedGroup
+                ? `Anúncios Ativos - Grupo ${selectedGroup.name}`
+                : `Anúncios Ativos - ${period === '24h' ? 'Últimas 24 horas' : period === '48h' ? 'Últimas 48 horas' : period === '7d' ? 'Últimos 7 dias' : period === '14d' ? 'Últimos 14 dias' : 'Últimos 30 dias'}`}
+            />
+          ) : (
+            <div className="metric-card flex items-center justify-center h-[300px]">
+              <p className="text-muted-foreground">
+                Nenhum dado de leitura disponível ainda
+              </p>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Recent Readings */}
-        {readings.length > 0 && (
-          <RecentReadingsTable readings={readings} />
-        )}
+          {/* Monitor Status Cards */}
+          {!comparisonMode && filteredMonitors.length > 0 && (
+            <div>
+              <h2 className="text-lg font-semibold text-foreground mb-4">
+                Status dos Monitores
+                {selectedGroup && <span className="text-muted-foreground font-normal ml-2">({selectedGroup.name})</span>}
+              </h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+                {filteredMonitors.slice(0, 8).map((monitor) => (
+                  <EnhancedMonitorCard
+                    key={monitor.id}
+                    id={monitor.id}
+                    name={monitor.name}
+                    url={monitor.ad_library_url}
+                    currentCount={monitor.latest_reading?.ads_active_count || 0}
+                    trend={monitor.change24h}
+                    sparklineData={monitor.sparklineData}
+                    tags={monitor.tags}
+                    status={monitor.is_active ? 'active' : 'inactive'}
+                    onViewCreatives={() => handleViewCreatives(monitor.ad_library_url)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
 
-        {monitors.length === 0 && (
-          <div className="metric-card text-center py-12">
-            <Radio className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-foreground">
-              Comece a monitorar
-            </h3>
-            <p className="text-muted-foreground mt-1">
-              Crie seu primeiro monitor na aba "Monitores" para começar a acompanhar anúncios.
-            </p>
-          </div>
-        )}
+          {/* Recent Readings */}
+          {!comparisonMode && readings.length > 0 && (
+            <RecentReadingsTable readings={readings} />
+          )}
+
+          {monitors.length === 0 && (
+            <div className="metric-card text-center py-12">
+              <Radio className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-foreground">
+                Comece a monitorar
+              </h3>
+              <p className="text-muted-foreground mt-1">
+                Crie seu primeiro monitor na aba "Monitores" para começar a acompanhar anúncios.
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Comparison Sidebar */}
+        <ComparisonSidebar
+          isOpen={comparisonSidebarOpen}
+          onClose={() => setComparisonSidebarOpen(false)}
+          groups={groupsWithTotals}
+          tags={tags}
+          selectedIds={comparisonSelectedIds}
+          onSelectionChange={setComparisonSelectedIds}
+          groupByMode={comparisonGroupByMode}
+          onGroupByModeChange={(mode) => {
+            setComparisonGroupByMode(mode);
+            setComparisonSelectedIds([]);
+          }}
+          maxSelections={10}
+        />
       </div>
     </AppLayout>
   );
