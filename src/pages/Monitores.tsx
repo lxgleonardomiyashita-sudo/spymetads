@@ -20,6 +20,7 @@ import {
   RefreshCw,
   Tags,
   Folder,
+  ExternalLink,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -436,9 +437,15 @@ function MonitoresContent() {
                       </span>
                     </div>
                   </div>
-                  <p className="text-sm text-muted-foreground truncate mt-1">
-                    {monitor.ad_library_url}
-                  </p>
+                  <a
+                    href={monitor.ad_library_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-muted-foreground hover:text-primary truncate mt-1 flex items-center gap-1.5 group transition-colors"
+                  >
+                    <span className="truncate">{monitor.ad_library_url}</span>
+                    <ExternalLink className="h-3.5 w-3.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </a>
                   <div className="flex flex-wrap items-center gap-2 mt-2">
                     {monitor.tags.map((tag) => (
                       <TagChip
@@ -634,9 +641,11 @@ function MonitoresContent() {
             onOpenChange={setEditDialogOpen}
             monitor={selectedMonitorForEdit}
             groups={groups}
+            allTags={tags}
             onSuccess={() => {
               fetchMonitors();
               fetchGroups();
+              fetchTags();
             }}
           />
         )}

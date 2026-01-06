@@ -15,9 +15,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Loader2 } from "lucide-react";
+import { Loader2, ExternalLink, X, Plus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { TagChip } from "@/components/ui/tag-chip";
+
+interface Tag {
+  id: string;
+  name: string;
+  type: string;
+}
 
 interface Group {
   id: string;
@@ -35,6 +42,7 @@ interface Monitor {
     days: string[];
     windows: string[];
   };
+  tags?: Tag[];
 }
 
 interface EditMonitorDialogProps {
@@ -42,6 +50,7 @@ interface EditMonitorDialogProps {
   onOpenChange: (open: boolean) => void;
   monitor: Monitor;
   groups: Group[];
+  allTags: Tag[];
   onSuccess: () => void;
 }
 
@@ -50,6 +59,7 @@ export function EditMonitorDialog({
   onOpenChange,
   monitor,
   groups,
+  allTags,
   onSuccess,
 }: EditMonitorDialogProps) {
   const { toast } = useToast();
@@ -58,13 +68,24 @@ export function EditMonitorDialog({
   const [url, setUrl] = useState(monitor.ad_library_url);
   const [groupId, setGroupId] = useState<string>(monitor.group_id || "none");
   const [interval, setInterval] = useState(monitor.schedule_config.interval.toString());
+  const [selectedTags, setSelectedTags] = useState<string[]>(monitor.tags?.map(t => t.id) || []);
+  const [isActive, setIsActive] = useState(true);
 
   useEffect(() => {
     setName(monitor.name);
     setUrl(monitor.ad_library_url);
     setGroupId(monitor.group_id || "none");
     setInterval(monitor.schedule_config.interval.toString());
+    setSelectedTags(monitor.tags?.map(t => t.id) || []);
   }, [monitor]);
+
+  const toggleTag = (tagId: string) => {
+    setSelectedTags(prev =>
+      prev.includes(tagId)
+        ? prev.filter(id => id !== tagId)
+        : [...prev, tagId]
+    );
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -73,6 +94,7 @@ export function EditMonitorDialog({
     setIsSubmitting(true);
 
     try {
+      // Update monitor
       const { error } = await supabase
         .from("monitors")
         .update({
@@ -87,6 +109,20 @@ export function EditMonitorDialog({
         .eq("id", monitor.id);
 
       if (error) throw error;
+
+      // Update tags - delete existing and insert new
+      await supabase
+        .from("monitor_tags")
+        .delete()
+        .eq("monitor_id", monitor.id);
+
+      if (selectedTags.length > 0) {
+        const tagsToInsert = selectedTags.map(tagId => ({
+          monitor_id: monitor.id,
+          tag_id: tagId,
+        }));
+        await supabase.from("monitor_tags").insert(tagsToInsert);
+      }
 
       toast({ title: "Monitor atualizado!" });
       onOpenChange(false);
@@ -126,13 +162,25 @@ export function EditMonitorDialog({
             <Label htmlFor="edit-url" className="text-foreground">
               URL da Biblioteca de Anúncios
             </Label>
-            <Input
-              id="edit-url"
-              placeholder="https://www.facebook.com/ads/library/..."
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              className="bg-muted border-border"
-            />
+            <div className="flex gap-2">
+              <Input
+                id="edit-url"
+                placeholder="https://www.facebook.com/ads/library/..."
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                className="bg-muted border-border flex-1"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                asChild
+              >
+                <a href={url} target="_blank" rel="noopener noreferrer">
+                  <ExternalLink className="h-4 w-4" />
+                </a>
+              </Button>
+            </div>
           </div>
 
           <div className="space-y-2">
@@ -169,6 +217,7 @@ export function EditMonitorDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="15">15 minutos</SelectItem>
                 <SelectItem value="30">30 minutos</SelectItem>
                 <SelectItem value="60">1 hora</SelectItem>
                 <SelectItem value="120">2 horas</SelectItem>
@@ -176,6 +225,31 @@ export function EditMonitorDialog({
                 <SelectItem value="480">8 horas</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-foreground">Tags</Label>
+            <div className="flex flex-wrap gap-2 p-3 bg-muted rounded-md border border-border min-h-[60px]">
+              {allTags.map((tag) => (
+                <button
+                  key={tag.id}
+                  type="button"
+                  onClick={() => toggleTag(tag.id)}
+                  className={`px-2.5 py-1 text-xs rounded-full transition-all ${
+                    selectedTags.includes(tag.id)
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-background border border-border text-muted-foreground hover:border-primary/50"
+                  }`}
+                >
+                  {tag.name}
+                </button>
+              ))}
+              {allTags.length === 0 && (
+                <span className="text-xs text-muted-foreground">
+                  Nenhuma tag disponível
+                </span>
+              )}
+            </div>
           </div>
 
           <div className="flex justify-end gap-3 pt-4">

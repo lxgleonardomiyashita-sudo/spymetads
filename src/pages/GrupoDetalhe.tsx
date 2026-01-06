@@ -628,9 +628,11 @@ function GrupoDetalheContent() {
             onOpenChange={setEditDialogOpen}
             monitor={selectedMonitorForEdit}
             groups={allGroups}
+            allTags={tags}
             onSuccess={() => {
               fetchMonitors();
               fetchAllGroups();
+              fetchTags();
             }}
           />
         )}
