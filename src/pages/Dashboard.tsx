@@ -348,8 +348,11 @@ function DashboardContent() {
     return readings;
   }, [allReadingsRaw, selectedMonitorId, selectedGroupId, monitors, period]);
 
-  // Calculate filtered chart data
+  // Calculate filtered chart data (for single monitor view only)
   const filteredChartData = useMemo(() => {
+    // Only use aggregated chart when a single monitor is selected
+    if (!selectedMonitorId) return [];
+    
     const isLongPeriod = period === '7d' || period === '14d' || period === '30d';
     const dataByKey: Record<string, number[]> = {};
 
@@ -377,7 +380,85 @@ function DashboardContent() {
         }
         return a.time.localeCompare(b.time);
       });
-  }, [filteredReadings, period]);
+  }, [filteredReadings, period, selectedMonitorId]);
+
+  // Calculate multi-line chart data for multiple monitors
+  const multiMonitorChartSeries = useMemo(() => {
+    // Only show multi-line when NOT a single monitor selected and there are monitors to show
+    if (selectedMonitorId || filteredMonitors.length === 0) return [];
+
+    const periodMs: Record<string, number> = {
+      '24h': 24 * 60 * 60 * 1000,
+      '48h': 48 * 60 * 60 * 1000,
+      '7d': 7 * 24 * 60 * 60 * 1000,
+      '14d': 14 * 24 * 60 * 60 * 1000,
+      '30d': 30 * 24 * 60 * 60 * 1000,
+    };
+    const now = Date.now();
+    const maxAge = periodMs[period] || periodMs['24h'];
+    const isLongPeriod = period === '7d' || period === '14d' || period === '30d';
+
+    // Get top 10 monitors by ads active in last 7 days
+    const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
+    const monitorAdsIn7d: Record<string, number> = {};
+    
+    filteredMonitors.forEach(m => {
+      const monitorReadings = allReadingsRaw.filter(
+        r => r.monitor_id === m.id && new Date(r.timestamp).getTime() >= sevenDaysAgo
+      );
+      const avgAds = monitorReadings.length > 0
+        ? monitorReadings.reduce((sum, r) => sum + r.ads_active_count, 0) / monitorReadings.length
+        : m.latest_reading?.ads_active_count || 0;
+      monitorAdsIn7d[m.id] = avgAds;
+    });
+
+    // Sort by average ads and take top 10
+    const top10Monitors = [...filteredMonitors]
+      .sort((a, b) => (monitorAdsIn7d[b.id] || 0) - (monitorAdsIn7d[a.id] || 0))
+      .slice(0, 10);
+
+    // Filter readings by period
+    const periodReadings = allReadingsRaw.filter(r => {
+      const age = now - new Date(r.timestamp).getTime();
+      return age <= maxAge;
+    });
+
+    return top10Monitors.map((monitor, index) => {
+      const monitorReadings = periodReadings.filter(r => r.monitor_id === monitor.id);
+
+      // Aggregate by time
+      const dataByTime: Record<string, number[]> = {};
+      monitorReadings.forEach(r => {
+        const date = new Date(r.timestamp);
+        const key = isLongPeriod
+          ? date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+          : `${date.getHours().toString().padStart(2, '0')}:00`;
+        if (!dataByTime[key]) dataByTime[key] = [];
+        dataByTime[key].push(r.ads_active_count);
+      });
+
+      const data = Object.entries(dataByTime)
+        .map(([time, values]) => ({
+          time,
+          value: Math.round(values.reduce((a, b) => a + b, 0) / values.length),
+        }))
+        .sort((a, b) => {
+          if (isLongPeriod) {
+            const [dayA, monthA] = a.time.split('/').map(Number);
+            const [dayB, monthB] = b.time.split('/').map(Number);
+            return monthA !== monthB ? monthA - monthB : dayA - dayB;
+          }
+          return a.time.localeCompare(b.time);
+        });
+
+      return {
+        id: monitor.id,
+        name: monitor.name,
+        color: getChartColor(index),
+        data,
+      };
+    });
+  }, [selectedMonitorId, filteredMonitors, allReadingsRaw, period]);
 
   // Get filtered stats
   const filteredStats = useMemo(() => ({
@@ -919,14 +1000,17 @@ function DashboardContent() {
               series={comparisonChartSeries}
               title={`Comparativo por ${comparisonGroupByMode === 'group' ? 'Grupo' : 'Tag'} - ${period === '24h' ? 'Últimas 24 horas' : period === '48h' ? 'Últimas 48 horas' : period === '7d' ? 'Últimos 7 dias' : period === '14d' ? 'Últimos 14 dias' : 'Últimos 30 dias'}`}
             />
-          ) : filteredChartData.length > 0 ? (
+          ) : selectedMonitorId && filteredChartData.length > 0 ? (
             <ActiveAdsLineChart
               data={filteredChartData}
-              title={selectedMonitor 
-                ? `Anúncios Ativos - ${selectedMonitor.name}` 
-                : selectedGroup
-                ? `Anúncios Ativos - Grupo ${selectedGroup.name}`
-                : `Anúncios Ativos - ${period === '24h' ? 'Últimas 24 horas' : period === '48h' ? 'Últimas 48 horas' : period === '7d' ? 'Últimos 7 dias' : period === '14d' ? 'Últimos 14 dias' : 'Últimos 30 dias'}`}
+              title={`Anúncios Ativos - ${selectedMonitor?.name}`}
+            />
+          ) : multiMonitorChartSeries.length > 0 ? (
+            <MultiLineChart
+              series={multiMonitorChartSeries}
+              title={selectedGroup
+                ? `Comparativo - Grupo ${selectedGroup.name} (Top ${Math.min(multiMonitorChartSeries.length, 10)} monitores)`
+                : `Comparativo - Top ${Math.min(multiMonitorChartSeries.length, 10)} monitores - ${period === '24h' ? 'Últimas 24 horas' : period === '48h' ? 'Últimas 48 horas' : period === '7d' ? 'Últimos 7 dias' : period === '14d' ? 'Últimos 14 dias' : 'Últimos 30 dias'}`}
             />
           ) : (
             <div className="metric-card flex items-center justify-center h-[300px]">

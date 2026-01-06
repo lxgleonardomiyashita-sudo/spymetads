@@ -90,7 +90,7 @@ export function MultiLineChart({ series, title }: MultiLineChartProps) {
 
   if (series.length === 0 || mergedData.length === 0) {
     return (
-      <div className="metric-card flex items-center justify-center h-[400px]">
+      <div className="metric-card flex items-center justify-center h-[220px]">
         <p className="text-muted-foreground">
           Selecione grupos ou tags para visualizar o comparativo
         </p>
@@ -103,7 +103,7 @@ export function MultiLineChart({ series, title }: MultiLineChartProps) {
       {title && (
         <h3 className="text-lg font-semibold text-foreground mb-4">{title}</h3>
       )}
-      <div className="chart-container h-[350px]">
+      <div className="chart-container h-[220px]">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={mergedData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
             <CartesianGrid
