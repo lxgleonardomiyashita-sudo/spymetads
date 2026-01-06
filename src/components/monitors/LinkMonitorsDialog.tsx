@@ -139,23 +139,17 @@ export function LinkMonitorsDialog({
               </p>
             </div>
           ) : (
-            <div className="space-y-3 max-h-64 overflow-y-auto">
+            <div className="space-y-2 max-h-64 overflow-y-auto">
               {availableMonitors.map((monitor) => (
                 <label
                   key={monitor.id}
-                  className="flex items-start gap-3 p-3 rounded-lg border border-border hover:border-primary/30 cursor-pointer transition-colors"
+                  className="flex items-center gap-3 p-2 rounded-lg border border-border hover:border-primary/30 cursor-pointer transition-colors"
                 >
                   <Checkbox
                     checked={selectedMonitors.has(monitor.id)}
                     onCheckedChange={() => toggleMonitor(monitor.id)}
-                    className="mt-0.5"
                   />
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-foreground">{monitor.name}</p>
-                    <p className="text-xs text-muted-foreground truncate">
-                      {monitor.ad_library_url}
-                    </p>
-                  </div>
+                  <span className="font-medium text-foreground text-sm truncate">{monitor.name}</span>
                 </label>
               ))}
             </div>
