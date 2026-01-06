@@ -34,7 +34,7 @@ const TAG_COLORS: Record<string, string> = {
   nicho: "#a855f7",
   pais: "#22c55e",
   tipo: "#f59e0b",
-  outro: "#3b82f6",
+  custom: "#3b82f6",
 };
 
 export function DistributionCharts({ groupDistribution, tagDistribution }: DistributionChartsProps) {
@@ -138,7 +138,7 @@ export function DistributionCharts({ groupDistribution, tagDistribution }: Distr
                       {sortedTags.map((entry, index) => (
                         <Cell 
                           key={`cell-${index}`} 
-                          fill={TAG_COLORS[entry.type] || TAG_COLORS.outro} 
+                          fill={TAG_COLORS[entry.type] || TAG_COLORS.custom} 
                         />
                       ))}
                     </Bar>
@@ -148,9 +148,9 @@ export function DistributionCharts({ groupDistribution, tagDistribution }: Distr
             )}
             {sortedTags.length > 0 && (
               <div className="mt-4 flex flex-wrap gap-3 justify-center">
-                {Object.entries(TAG_COLORS).map(([type, color]) => (
+                {Array.from(new Set(sortedTags.map(t => t.type))).map((type) => (
                   <div key={type} className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: color }} />
+                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: TAG_COLORS[type] || TAG_COLORS.custom }} />
                     <span className="text-xs text-muted-foreground capitalize">{type}</span>
                   </div>
                 ))}
