@@ -10,7 +10,6 @@ import {
   RefreshCw,
   Edit,
   Trash2,
-  Clock,
   Plus,
   MoreVertical,
   Play,
@@ -18,6 +17,8 @@ import {
   Tags,
   Folder,
   Link2,
+  ExternalLink,
+  BarChart3,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -462,172 +463,153 @@ function GrupoDetalheContent() {
             </div>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {monitors.map((monitor) => (
               <div
                 key={monitor.id}
-                className="metric-card flex flex-col lg:flex-row lg:items-center gap-4 hover:border-primary/30 transition-colors"
+                className="metric-card p-4 hover:border-primary/30 transition-colors flex flex-col"
               >
-                {/* Left: Icon and Info */}
-                <div className="flex items-start gap-4 flex-1">
-                  <div
-                    className={cn(
-                      "flex h-12 w-12 items-center justify-center rounded-xl flex-shrink-0",
-                      monitor.is_active
-                        ? "bg-success/10 text-success"
-                        : "bg-muted text-muted-foreground"
-                    )}
-                  >
-                    <Radio className="h-6 w-6" />
+                {/* Header: Status + Actions */}
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <div
+                      className={cn(
+                        "w-2 h-2 rounded-full flex-shrink-0",
+                        monitor.is_active ? "bg-success animate-pulse" : "bg-muted-foreground"
+                      )}
+                    />
+                    <span
+                      className={cn(
+                        "text-xs font-medium",
+                        monitor.is_active ? "text-success" : "text-muted-foreground"
+                      )}
+                    >
+                      {monitor.is_active ? "Ativo" : "Pausado"}
+                    </span>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-3 flex-wrap">
-                      <h3 className="text-lg font-semibold text-foreground">
-                        {monitor.name}
-                      </h3>
-                      <div className="flex items-center gap-1.5">
-                        <div
-                          className={cn(
-                            "w-2 h-2 rounded-full",
-                            monitor.is_active ? "bg-success animate-pulse" : "bg-muted-foreground"
-                          )}
-                        />
-                        <span
-                          className={cn(
-                            "text-sm",
-                            monitor.is_active ? "text-success" : "text-muted-foreground"
-                          )}
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      onClick={() => window.open(monitor.ad_library_url, '_blank')}
+                      title="Abrir Ad Library"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      onClick={() => scrapeMonitor(monitor.id, monitor.ad_library_url, monitor.name)}
+                      disabled={scrapingMonitors.has(monitor.id)}
+                      title="Coletar agora"
+                    >
+                      {scrapingMonitors.has(monitor.id) ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <RefreshCw className="h-3.5 w-3.5" />
+                      )}
+                    </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" className="h-7 w-7">
+                          <MoreVertical className="h-3.5 w-3.5" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end" className="w-48">
+                        <DropdownMenuItem
+                          onClick={() => scrapeMonitor(monitor.id, monitor.ad_library_url, monitor.name)}
+                          disabled={scrapingMonitors.has(monitor.id)}
                         >
-                          {monitor.is_active ? "Ativo" : "Pausado"}
-                        </span>
-                      </div>
-                    </div>
-                    <p className="text-sm text-muted-foreground truncate mt-1">
-                      {monitor.ad_library_url}
-                    </p>
-                    <div className="flex flex-wrap items-center gap-2 mt-2">
-                      {monitor.tags.map((tag) => (
-                        <TagChip
-                          key={tag.id}
-                          name={tag.name}
-                          type={tag.type}
-                          size="sm"
-                          removable
-                          onRemove={() => removeTagFromMonitor(monitor.id, tag.id)}
-                        />
-                      ))}
-                      <button
-                        onClick={() => openTagsDialog(monitor)}
-                        className="text-xs text-muted-foreground hover:text-primary transition-colors flex items-center gap-1"
-                      >
-                        <Plus className="h-3 w-3" />
-                        Tags
-                      </button>
-                    </div>
+                          <RefreshCw className="h-4 w-4 mr-2" />
+                          Coletar Agora
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onSelect={(e) => {
+                            e.preventDefault();
+                            openTagsDialog(monitor);
+                          }}
+                        >
+                          <Tags className="h-4 w-4 mr-2" />
+                          Gerenciar Tags
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onSelect={(e) => {
+                            e.preventDefault();
+                            openEditDialog(monitor);
+                          }}
+                        >
+                          <Edit className="h-4 w-4 mr-2" />
+                          Editar
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => toggleMonitorStatus(monitor.id, monitor.is_active)}>
+                          {monitor.is_active ? (
+                            <>
+                              <Pause className="h-4 w-4 mr-2" />
+                              Pausar
+                            </>
+                          ) : (
+                            <>
+                              <Play className="h-4 w-4 mr-2" />
+                              Ativar
+                            </>
+                          )}
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem
+                          className="text-destructive"
+                          onClick={() => deleteMonitor(monitor.id)}
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Excluir
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
                 </div>
 
-                {/* Right: Stats and Actions */}
-                <div className="flex items-center gap-6 lg:gap-8">
-                  <div className="text-right">
-                    <p className="text-2xl font-bold text-foreground">
-                      {monitor.latest_reading
-                        ? monitor.latest_reading.ads_active_count.toLocaleString('pt-BR')
-                        : '-'}
-                    </p>
-                    <p className="text-xs text-muted-foreground">anúncios ativos</p>
-                  </div>
-                  <div className="text-right hidden md:block">
-                    <div className="flex items-center gap-1.5 text-muted-foreground">
-                      <Clock className="h-3.5 w-3.5" />
-                      <span className="text-sm">{getScheduleLabel(monitor.schedule_config)}</span>
-                    </div>
-                    {monitor.latest_reading && (
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Última: {formatTimestamp(monitor.latest_reading.timestamp)}
-                      </p>
-                    )}
-                  </div>
-
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => scrapeMonitor(monitor.id, monitor.ad_library_url, monitor.name)}
-                    disabled={scrapingMonitors.has(monitor.id)}
-                    className="h-8"
-                  >
-                    {scrapingMonitors.has(monitor.id) ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <RefreshCw className="h-4 w-4" />
-                    )}
-                  </Button>
-
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="h-8 w-8"
-                    onClick={() => openEditDialog(monitor)}
-                  >
-                    <Edit className="h-4 w-4" />
-                  </Button>
-
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    className="h-8 w-8 text-destructive hover:text-destructive"
-                    onClick={() => deleteMonitor(monitor.id)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8">
-                        <MoreVertical className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-48">
-                      <DropdownMenuItem
-                        onClick={() => scrapeMonitor(monitor.id, monitor.ad_library_url, monitor.name)}
-                        disabled={scrapingMonitors.has(monitor.id)}
-                      >
-                        <RefreshCw className="h-4 w-4 mr-2" />
-                        Coletar Agora
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onSelect={(e) => {
-                          e.preventDefault();
-                          openTagsDialog(monitor);
-                        }}
-                      >
-                        <Tags className="h-4 w-4 mr-2" />
-                        Gerenciar Tags
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => toggleMonitorStatus(monitor.id, monitor.is_active)}>
-                        {monitor.is_active ? (
-                          <>
-                            <Pause className="h-4 w-4 mr-2" />
-                            Pausar
-                          </>
-                        ) : (
-                          <>
-                            <Play className="h-4 w-4 mr-2" />
-                            Ativar
-                          </>
-                        )}
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        className="text-destructive"
-                        onClick={() => deleteMonitor(monitor.id)}
-                      >
-                        <Trash2 className="h-4 w-4 mr-2" />
-                        Excluir
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                {/* Name */}
+                <div className="mb-2">
+                  <h3 className="text-sm font-semibold text-foreground truncate" title={monitor.name}>
+                    {monitor.name}
+                  </h3>
                 </div>
+
+                {/* Stats */}
+                <div className="flex-1 flex flex-col justify-center py-2">
+                  <p className="text-3xl font-bold text-foreground text-center">
+                    {monitor.latest_reading
+                      ? monitor.latest_reading.ads_active_count.toLocaleString('pt-BR')
+                      : '-'}
+                  </p>
+                  <p className="text-xs text-muted-foreground text-center">anúncios ativos</p>
+                </div>
+
+                {/* Tags */}
+                <div className="flex flex-wrap items-center gap-1.5 mt-2 min-h-[24px]">
+                  {monitor.tags.map((tag) => (
+                    <TagChip
+                      key={tag.id}
+                      name={tag.name}
+                      type={tag.type}
+                      size="sm"
+                    />
+                  ))}
+                  <button
+                    onClick={() => openTagsDialog(monitor)}
+                    className="text-xs text-muted-foreground hover:text-primary transition-colors ml-auto"
+                  >
+                    <Plus className="h-3 w-3" />
+                  </button>
+                </div>
+
+                {/* Last update */}
+                {monitor.latest_reading && (
+                  <p className="text-[10px] text-muted-foreground mt-2 text-center">
+                    {formatTimestamp(monitor.latest_reading.timestamp)}
+                  </p>
+                )}
               </div>
             ))}
           </div>
