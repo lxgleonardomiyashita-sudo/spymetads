@@ -102,13 +102,21 @@ export function MonitorInsightsDialog({
     }
   };
 
-  // Generate link for duplicated creatives (sorted by relevancy)
+  // Generate link for duplicated creatives (sorted by relevancy with grouping)
   const getDuplicatedCreativesLink = () => {
     if (!monitor) return "";
-    const baseUrl = monitor.ad_library_url;
-    // Add sorting parameter for grouped/duplicated creatives
-    const separator = baseUrl.includes("?") ? "&" : "?";
-    return `${baseUrl}${separator}sort_data[direction]=desc&sort_data[mode]=relevancy_monthly_grouped`;
+    try {
+      const url = new URL(monitor.ad_library_url);
+      // Set sorting parameters for most duplicated/grouped creatives
+      url.searchParams.set("sort_data[direction]", "desc");
+      url.searchParams.set("sort_data[mode]", "relevancy_monthly_grouped");
+      return url.toString();
+    } catch {
+      // Fallback if URL parsing fails
+      const baseUrl = monitor.ad_library_url;
+      const separator = baseUrl.includes("?") ? "&" : "?";
+      return `${baseUrl}${separator}sort_data[direction]=desc&sort_data[mode]=relevancy_monthly_grouped`;
+    }
   };
 
   if (!monitor) return null;
