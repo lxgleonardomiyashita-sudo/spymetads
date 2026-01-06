@@ -38,6 +38,15 @@ interface Reading {
   status: string;
 }
 
+interface AdDetail {
+  id: string;
+  ad_archive_id: string;
+  ad_title: string | null;
+  ad_body: string | null;
+  times_seen: number | null;
+  days_active: number | null;
+}
+
 interface MonitorInsightsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -57,6 +66,7 @@ export function MonitorInsightsDialog({
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(true);
   const [readings, setReadings] = useState<Reading[]>([]);
+  const [topAds, setTopAds] = useState<AdDetail[]>([]);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -82,6 +92,18 @@ export function MonitorInsightsDialog({
 
       if (readingsData) {
         setReadings(readingsData);
+      }
+
+      // Fetch top ads by times_seen
+      const { data: adsData } = await supabase
+        .from("ad_details")
+        .select("id, ad_archive_id, ad_title, ad_body, times_seen, days_active")
+        .eq("monitor_id", monitor.id)
+        .order("times_seen", { ascending: false, nullsFirst: false })
+        .limit(3);
+
+      if (adsData) {
+        setTopAds(adsData);
       }
     } catch (error) {
       console.error("Error fetching insights:", error);
@@ -118,6 +140,14 @@ export function MonitorInsightsDialog({
       return `${baseUrl}${separator}sort_data[direction]=desc&sort_data[mode]=relevancy_monthly_grouped`;
     }
   };
+
+  // Generate direct link to a specific ad in Ad Library
+  const getAdDirectLink = (adArchiveId: string) => {
+    return `https://www.facebook.com/ads/library/?id=${adArchiveId}`;
+  };
+
+  // Check if all ads have only 1 times_seen
+  const allSingleRepetition = topAds.length > 0 && topAds.every(ad => (ad.times_seen || 1) <= 1);
 
   if (!monitor) return null;
 
@@ -282,21 +312,52 @@ export function MonitorInsightsDialog({
 
               <Separator />
 
-              {/* Duplicated Creatives CTA */}
+              {/* Top Duplicated Creatives */}
               <div className="p-4 rounded-lg bg-gradient-to-r from-orange-500/10 to-red-500/10 border border-orange-500/20">
                 <div className="flex items-center gap-2 mb-2">
                   <Flame className="h-5 w-5 text-orange-500" />
                   <h3 className="font-medium">Criativos Mais Escalados</h3>
                 </div>
-                <p className="text-sm text-muted-foreground mb-4">
-                  Veja os criativos que estão sendo mais duplicados/utilizados por este anunciante diretamente na Meta Ad Library.
-                </p>
+                
+                {topAds.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    Nenhum criativo individual capturado ainda. Execute uma leitura para coletar dados.
+                  </p>
+                ) : allSingleRepetition ? (
+                  <p className="text-sm text-muted-foreground">
+                    Todos os criativos deste anunciante possuem apenas 1 repetição.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {topAds.map((ad, index) => (
+                      <button
+                        key={ad.id}
+                        onClick={() => window.open(getAdDirectLink(ad.ad_archive_id), "_blank")}
+                        className="w-full flex items-center gap-3 p-3 rounded-lg bg-card/50 hover:bg-card border border-border/50 hover:border-border transition-colors text-left"
+                      >
+                        <span className="flex-shrink-0 w-6 h-6 rounded-full bg-orange-500/20 text-orange-500 flex items-center justify-center text-xs font-bold">
+                          {index + 1}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate">
+                            {ad.ad_title || ad.ad_body?.slice(0, 50) || `Anúncio ${ad.ad_archive_id}`}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {ad.times_seen || 1}x duplicado • {ad.days_active || 0} dias ativo
+                          </p>
+                        </div>
+                        <ExternalLink className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                      </button>
+                    ))}
+                  </div>
+                )}
+
                 <Button
-                  className="w-full bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white"
+                  className="w-full mt-4 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white"
                   onClick={() => window.open(getDuplicatedCreativesLink(), "_blank")}
                 >
                   <Flame className="h-4 w-4 mr-2" />
-                  Ver Criativos Duplicados
+                  Ver Todos na Ad Library
                   <ExternalLink className="h-4 w-4 ml-2" />
                 </Button>
               </div>
