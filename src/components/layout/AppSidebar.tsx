@@ -11,7 +11,8 @@ import {
   ChevronRight,
   LogOut,
   Activity,
-  Folder
+  Folder,
+  Star
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,7 @@ const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Monitores", href: "/monitores", icon: Radio },
   { name: "Grupos", href: "/grupos", icon: Folder },
+  { name: "Spy Especial", href: "/spy-especial", icon: Star },
   { name: "Análises", href: "/analises", icon: BarChart3 },
   { name: "Tags", href: "/tags", icon: Tags },
   { name: "Alertas", href: "/alertas", icon: Bell },

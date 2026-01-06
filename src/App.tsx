@@ -12,6 +12,7 @@ import GrupoDetalhe from "./pages/GrupoDetalhe";
 import Analises from "./pages/Analises";
 import Tags from "./pages/Tags";
 import Alertas from "./pages/Alertas";
+import SpyEspecial from "./pages/SpyEspecial";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 
@@ -34,6 +35,7 @@ const App = () => (
             <Route path="/analises" element={<Analises />} />
             <Route path="/tags" element={<Tags />} />
             <Route path="/alertas" element={<Alertas />} />
+            <Route path="/spy-especial" element={<SpyEspecial />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

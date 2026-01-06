@@ -23,6 +23,7 @@ import {
   Folder,
   ExternalLink,
   BarChart3,
+  Star,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -36,6 +37,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 interface Tag {
   id: string;
@@ -86,6 +88,55 @@ function MonitoresContent() {
   const [selectedMonitorForEdit, setSelectedMonitorForEdit] = useState<Monitor | null>(null);
   const [insightsDialogOpen, setInsightsDialogOpen] = useState(false);
   const [selectedMonitorForInsights, setSelectedMonitorForInsights] = useState<Monitor | null>(null);
+  const queryClient = useQueryClient();
+
+  // Fetch saved monitors
+  const { data: savedMonitorIds = [] } = useQuery({
+    queryKey: ["saved-monitor-ids", user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("saved_monitors")
+        .select("monitor_id")
+        .eq("user_id", user?.id);
+      if (error) throw error;
+      return data?.map(s => s.monitor_id) || [];
+    },
+    enabled: !!user,
+  });
+
+  // Save/unsave mutation
+  const toggleSaveMutation = useMutation({
+    mutationFn: async (monitorId: string) => {
+      const isSaved = savedMonitorIds.includes(monitorId);
+      if (isSaved) {
+        const { error } = await supabase
+          .from("saved_monitors")
+          .delete()
+          .eq("monitor_id", monitorId)
+          .eq("user_id", user?.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from("saved_monitors")
+          .insert({ monitor_id: monitorId, user_id: user?.id });
+        if (error) throw error;
+      }
+      return { monitorId, isSaved };
+    },
+    onSuccess: ({ isSaved }) => {
+      queryClient.invalidateQueries({ queryKey: ["saved-monitor-ids"] });
+      queryClient.invalidateQueries({ queryKey: ["saved-monitors"] });
+      toast({
+        title: isSaved ? "Removido do Spy Especial" : "Adicionado ao Spy Especial",
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Erro ao salvar",
+        variant: "destructive",
+      });
+    },
+  });
 
   const fetchMonitors = async () => {
     if (!user) return;
@@ -419,6 +470,18 @@ function MonitoresContent() {
                   </span>
                 </div>
                 <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className={cn(
+                      "h-7 w-7",
+                      savedMonitorIds.includes(monitor.id) && "text-yellow-500"
+                    )}
+                    onClick={() => toggleSaveMutation.mutate(monitor.id)}
+                    title={savedMonitorIds.includes(monitor.id) ? "Remover do Spy Especial" : "Salvar no Spy Especial"}
+                  >
+                    <Star className={cn("h-3.5 w-3.5", savedMonitorIds.includes(monitor.id) && "fill-yellow-500")} />
+                  </Button>
                   <Button
                     variant="ghost"
                     size="icon"
