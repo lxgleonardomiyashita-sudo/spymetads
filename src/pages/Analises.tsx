@@ -366,13 +366,18 @@ function AnalisisContent() {
             />
 
             <Select value={period} onValueChange={setPeriod}>
-              <SelectTrigger className="w-[140px] bg-card border-border">
+              <SelectTrigger className="w-[160px] bg-card border-border">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="7">7 dias</SelectItem>
-                <SelectItem value="14">14 dias</SelectItem>
-                <SelectItem value="30">30 dias</SelectItem>
+                <SelectItem value="0">Hoje</SelectItem>
+                <SelectItem value="1">Ontem</SelectItem>
+                <SelectItem value="7">Últimos 7 dias</SelectItem>
+                <SelectItem value="14">Últimos 14 dias</SelectItem>
+                <SelectItem value="30">Últimos 30 dias</SelectItem>
+                <SelectItem value="60">Últimos 60 dias</SelectItem>
+                <SelectItem value="90">Últimos 90 dias</SelectItem>
+                <SelectItem value="180">Últimos 180 dias</SelectItem>
               </SelectContent>
             </Select>
           </div>
