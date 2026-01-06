@@ -14,7 +14,6 @@ import {
   TrendingUp,
   TrendingDown,
   Minus,
-  Calendar,
   BarChart3,
   Flame,
   Loader2,
@@ -32,27 +31,11 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { format, differenceInDays, parseISO } from "date-fns";
-import { ptBR } from "date-fns/locale";
 
 interface Reading {
   ads_active_count: number;
   timestamp: string;
   status: string;
-}
-
-interface AdDetail {
-  id: string;
-  ad_archive_id: string;
-  ad_start_date: string | null;
-  ad_body: string | null;
-  ad_title: string | null;
-  preview_url: string | null;
-  link_url: string | null;
-  days_active: number;
-  times_seen: number;
-  first_seen_at: string;
-  last_seen_at: string;
-  is_active: boolean;
 }
 
 interface MonitorInsightsDialogProps {
@@ -74,7 +57,6 @@ export function MonitorInsightsDialog({
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(true);
   const [readings, setReadings] = useState<Reading[]>([]);
-  const [topAds, setTopAds] = useState<AdDetail[]>([]);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -88,32 +70,18 @@ export function MonitorInsightsDialog({
     setIsLoading(true);
 
     try {
-      // Fetch readings for the last 30 days
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-      const [readingsRes, adsRes] = await Promise.all([
-        supabase
-          .from("readings")
-          .select("ads_active_count, timestamp, status")
-          .eq("monitor_id", monitor.id)
-          .gte("timestamp", thirtyDaysAgo.toISOString())
-          .order("timestamp", { ascending: true }),
-        supabase
-          .from("ad_details")
-          .select("*")
-          .eq("monitor_id", monitor.id)
-          .eq("is_active", true)
-          .order("days_active", { ascending: false })
-          .limit(10),
-      ]);
+      const { data: readingsData } = await supabase
+        .from("readings")
+        .select("ads_active_count, timestamp, status")
+        .eq("monitor_id", monitor.id)
+        .gte("timestamp", thirtyDaysAgo.toISOString())
+        .order("timestamp", { ascending: true });
 
-      if (readingsRes.data) {
-        setReadings(readingsRes.data);
-      }
-
-      if (adsRes.data) {
-        setTopAds(adsRes.data as AdDetail[]);
+      if (readingsData) {
+        setReadings(readingsData);
       }
     } catch (error) {
       console.error("Error fetching insights:", error);
@@ -132,6 +100,15 @@ export function MonitorInsightsDialog({
     } catch {
       toast({ title: "Erro ao copiar", variant: "destructive" });
     }
+  };
+
+  // Generate link for duplicated creatives (sorted by relevancy)
+  const getDuplicatedCreativesLink = () => {
+    if (!monitor) return "";
+    const baseUrl = monitor.ad_library_url;
+    // Add sorting parameter for grouped/duplicated creatives
+    const separator = baseUrl.includes("?") ? "&" : "?";
+    return `${baseUrl}${separator}sort_data[direction]=desc&sort_data[mode]=relevancy_monthly_grouped`;
   };
 
   if (!monitor) return null;
@@ -295,72 +272,29 @@ export function MonitorInsightsDialog({
                 </div>
               )}
 
-              {/* Top Scaled Ads */}
-              {topAds.length > 0 ? (
-                <>
-                  <Separator />
-                  <div>
-                    <h3 className="font-medium flex items-center gap-2 mb-4">
-                      <Flame className="h-4 w-4 text-orange-500" />
-                      Top Anúncios Mais Escalados
-                    </h3>
-                    <div className="space-y-3">
-                      {topAds.map((ad, index) => (
-                        <div
-                          key={ad.id}
-                          className="p-3 rounded-lg bg-card border flex items-start gap-3"
-                        >
-                          <span className="text-lg font-bold text-muted-foreground">
-                            #{index + 1}
-                          </span>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <Badge variant="outline" className="text-xs">
-                                {ad.days_active} dias ativos
-                              </Badge>
-                              <Badge variant="secondary" className="text-xs">
-                                Visto {ad.times_seen}x
-                              </Badge>
-                            </div>
-                            {ad.ad_body && (
-                              <p className="text-sm text-muted-foreground line-clamp-2">
-                                {ad.ad_body}
-                              </p>
-                            )}
-                            {ad.ad_start_date && (
-                              <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
-                                <Calendar className="h-3 w-3" />
-                                Início: {format(parseISO(ad.ad_start_date), "dd/MM/yyyy", { locale: ptBR })}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <Separator />
-                  <div className="p-4 rounded-lg bg-muted/50 border border-dashed">
-                    <h3 className="font-medium flex items-center gap-2 mb-2">
-                      <Flame className="h-4 w-4 text-orange-500" />
-                      Anúncios Mais Escalados
-                    </h3>
-                    <p className="text-sm text-muted-foreground">
-                      Os dados de anúncios individuais serão coletados automaticamente nas próximas leituras. 
-                      A Meta Ad Library não expõe IDs de anúncios diretamente no HTML público, então essa funcionalidade 
-                      depende de padrões específicos que podem variar.
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      💡 Dica: Use o botão "Abrir Ad Library" para ver os anúncios diretamente na plataforma da Meta.
-                    </p>
-                  </div>
-                </>
-              )}
+              <Separator />
+
+              {/* Duplicated Creatives CTA */}
+              <div className="p-4 rounded-lg bg-gradient-to-r from-orange-500/10 to-red-500/10 border border-orange-500/20">
+                <div className="flex items-center gap-2 mb-2">
+                  <Flame className="h-5 w-5 text-orange-500" />
+                  <h3 className="font-medium">Criativos Mais Escalados</h3>
+                </div>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Veja os criativos que estão sendo mais duplicados/utilizados por este anunciante diretamente na Meta Ad Library.
+                </p>
+                <Button
+                  className="w-full bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white"
+                  onClick={() => window.open(getDuplicatedCreativesLink(), "_blank")}
+                >
+                  <Flame className="h-4 w-4 mr-2" />
+                  Ver Criativos Duplicados
+                  <ExternalLink className="h-4 w-4 ml-2" />
+                </Button>
+              </div>
 
               {/* Actions */}
-              <div className="flex gap-2 pt-4">
+              <div className="flex gap-2 pt-2">
                 <Button
                   variant="outline"
                   className="flex-1"
@@ -374,6 +308,7 @@ export function MonitorInsightsDialog({
                   Copiar Link
                 </Button>
                 <Button
+                  variant="outline"
                   className="flex-1"
                   onClick={() => window.open(monitor.ad_library_url, "_blank")}
                 >
