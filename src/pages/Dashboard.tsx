@@ -938,7 +938,7 @@ function DashboardContent() {
 
           {/* Monitor Status Cards */}
           {!comparisonMode && filteredMonitors.length > 0 && (
-            <div>
+            <div className="-mt-2">
               <h2 className="text-lg font-semibold text-foreground mb-3">
                 Status dos Monitores
                 {selectedGroup && <span className="text-muted-foreground font-normal ml-2">({selectedGroup.name})</span>}
