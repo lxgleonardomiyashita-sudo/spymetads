@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { TagChip } from "@/components/ui/tag-chip";
@@ -47,16 +47,18 @@ export function ManageTagsDialog({
 }: ManageTagsDialogProps) {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [selectedTags, setSelectedTags] = useState<string[]>(currentTags.map(t => t.id));
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [newTagName, setNewTagName] = useState("");
   const [newTagType, setNewTagType] = useState<'nicho' | 'idioma' | 'pais' | 'custom'>('nicho');
   const [isLoading, setIsLoading] = useState(false);
   const [isAddingTag, setIsAddingTag] = useState(false);
 
-  // Reset selected tags when dialog opens
-  useState(() => {
-    setSelectedTags(currentTags.map(t => t.id));
-  });
+  // Reset selected tags when dialog opens or monitor changes
+  useEffect(() => {
+    if (open) {
+      setSelectedTags(currentTags.map(t => t.id));
+    }
+  }, [open, monitorId, currentTags]);
 
   const toggleTag = (tagId: string) => {
     setSelectedTags(prev =>
