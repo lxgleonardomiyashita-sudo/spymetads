@@ -12,8 +12,140 @@ interface ScrapeRequest {
   url: string;
 }
 
+interface ExtractedAd {
+  ad_archive_id: string;
+  ad_start_date: string | null;
+  ad_body: string | null;
+  ad_title: string | null;
+  preview_url: string | null;
+  link_url: string | null;
+  platforms: string[];
+}
+
+// Extract individual ads from the HTML content
+function extractAdsFromContent(htmlContent: string, markdownContent: string): ExtractedAd[] {
+  const ads: ExtractedAd[] = [];
+  const seenIds = new Set<string>();
+
+  // Pattern 1: Extract ad_archive_id from URLs
+  const adIdPattern = /ad_archive_id[=:]?\s*["']?(\d{10,20})["']?/gi;
+  let match;
+  
+  while ((match = adIdPattern.exec(htmlContent)) !== null) {
+    const adId = match[1];
+    if (!seenIds.has(adId)) {
+      seenIds.add(adId);
+      ads.push({
+        ad_archive_id: adId,
+        ad_start_date: null,
+        ad_body: null,
+        ad_title: null,
+        preview_url: null,
+        link_url: null,
+        platforms: [],
+      });
+    }
+  }
+
+  // Pattern 2: Extract from data attributes
+  const dataAdPattern = /data-ad-archive-id=["'](\d{10,20})["']/gi;
+  while ((match = dataAdPattern.exec(htmlContent)) !== null) {
+    const adId = match[1];
+    if (!seenIds.has(adId)) {
+      seenIds.add(adId);
+      ads.push({
+        ad_archive_id: adId,
+        ad_start_date: null,
+        ad_body: null,
+        ad_title: null,
+        preview_url: null,
+        link_url: null,
+        platforms: [],
+      });
+    }
+  }
+
+  // Pattern 3: Try to extract start dates from content
+  const startDatePattern = /Started running on\s*([\w\s,]+\d{4})/gi;
+  const dates: string[] = [];
+  while ((match = startDatePattern.exec(markdownContent)) !== null) {
+    dates.push(match[1].trim());
+  }
+
+  // Try alternative date patterns
+  const altDatePattern = /(?:Começou a ser veiculado em|Em exibição desde)\s*([\d\/]+)/gi;
+  while ((match = altDatePattern.exec(markdownContent)) !== null) {
+    dates.push(match[1].trim());
+  }
+
+  // Assign dates to ads if we found matching counts
+  if (dates.length > 0) {
+    ads.forEach((ad, index) => {
+      if (dates[index]) {
+        try {
+          const dateStr = dates[index];
+          const parsed = new Date(dateStr);
+          if (!isNaN(parsed.getTime())) {
+            ad.ad_start_date = parsed.toISOString();
+          }
+        } catch {
+          // Ignore parse errors
+        }
+      }
+    });
+  }
+
+  // Pattern 4: Extract ad body text - look for common patterns
+  const bodyPatterns = [
+    /"body":\s*\{[^}]*"text":\s*"([^"]+)"/gi,
+    /"message":\s*"([^"]{20,500})"/gi,
+  ];
+
+  const bodies: string[] = [];
+  for (const pattern of bodyPatterns) {
+    while ((match = pattern.exec(htmlContent)) !== null) {
+      bodies.push(match[1]);
+    }
+  }
+
+  bodies.forEach((body, index) => {
+    if (ads[index]) {
+      ads[index].ad_body = body.slice(0, 500);
+    }
+  });
+
+  // Pattern 5: Extract preview URLs
+  const previewPattern = /(?:image|thumbnail|preview)[^"]*":\s*"(https:\/\/[^"]+)"/gi;
+  const previews: string[] = [];
+  while ((match = previewPattern.exec(htmlContent)) !== null) {
+    previews.push(match[1]);
+  }
+
+  previews.forEach((preview, index) => {
+    if (ads[index]) {
+      ads[index].preview_url = preview;
+    }
+  });
+
+  console.log(`Extracted ${ads.length} individual ads from content`);
+  return ads;
+}
+
+// Calculate days active based on ad_start_date
+function calculateDaysActive(startDate: string | null): number {
+  if (!startDate) return 0;
+  try {
+    const start = new Date(startDate);
+    const now = new Date();
+    const diffTime = now.getTime() - start.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return Math.max(0, diffDays);
+  } catch {
+    return 0;
+  }
+}
+
 serve(async (req) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -38,7 +170,6 @@ serve(async (req) => {
     );
   }
 
-  // Create Supabase client with service role for inserting readings
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
   try {
@@ -53,13 +184,11 @@ serve(async (req) => {
 
     console.log(`Scraping Ad Library URL for monitor ${monitor_id}: ${url}`);
 
-    // Format URL
     let formattedUrl = url.trim();
     if (!formattedUrl.startsWith('http://') && !formattedUrl.startsWith('https://')) {
       formattedUrl = `https://${formattedUrl}`;
     }
 
-    // Use Firecrawl to scrape the page
     const scrapeResponse = await fetch('https://api.firecrawl.dev/v1/scrape', {
       method: 'POST',
       headers: {
@@ -70,7 +199,7 @@ serve(async (req) => {
         url: formattedUrl,
         formats: ['markdown', 'html'],
         onlyMainContent: false,
-        waitFor: 5000, // Wait 5 seconds for dynamic content
+        waitFor: 5000,
       }),
     });
 
@@ -79,7 +208,6 @@ serve(async (req) => {
     if (!scrapeResponse.ok) {
       console.error('Firecrawl scrape failed:', scrapeData);
       
-      // Record failed reading
       await supabase.from('readings').insert({
         monitor_id,
         ads_active_count: 0,
@@ -98,81 +226,43 @@ serve(async (req) => {
       );
     }
 
-    // Extract the ads count from the scraped content
-    const content = scrapeData.data?.markdown || scrapeData.data?.html || '';
+    const markdownContent = scrapeData.data?.markdown || '';
     const htmlContent = scrapeData.data?.html || '';
+    const content = markdownContent || htmlContent;
     
     console.log('Scraped content length:', content.length);
 
-    // Try multiple patterns to find the ads count
+    // Extract total ads count
     let adsCount = 0;
     let foundMatch = false;
 
-    // Pattern 1: Look for "X results" or "X resultados"
-    const resultsPattern = /(\d{1,3}(?:[.,]\d{3})*)\s*(?:results?|resultados?)/i;
-    const resultsMatch = content.match(resultsPattern);
-    if (resultsMatch) {
-      adsCount = parseInt(resultsMatch[1].replace(/[.,]/g, ''), 10);
-      foundMatch = true;
-      console.log('Found via results pattern:', adsCount);
-    }
+    const patterns = [
+      /(\d{1,3}(?:[.,]\d{3})*)\s*(?:results?|resultados?)/i,
+      /(?:about|cerca de|approximately|aprox\.?)\s*(\d{1,3}(?:[.,]\d{3})*)\s*(?:ads?|anúncios?)/i,
+      /(\d{1,3}(?:[.,]\d{3})*)\s*(?:ads?|anúncios?|anuncios?)/i,
+      /(?:showing|mostrando|displaying).*?(\d{1,3}(?:[.,]\d{3})*)/i,
+      /(?:showing|mostrando)\s*\d+\s*(?:of|de)\s*(\d{1,3}(?:[.,]\d{3})*)/i,
+    ];
 
-    // Pattern 2: Look for "About X ads" or "Cerca de X anúncios"
-    if (!foundMatch) {
-      const aboutAdsPattern = /(?:about|cerca de|approximately|aprox\.?)\s*(\d{1,3}(?:[.,]\d{3})*)\s*(?:ads?|anúncios?)/i;
-      const aboutMatch = content.match(aboutAdsPattern);
-      if (aboutMatch) {
-        adsCount = parseInt(aboutMatch[1].replace(/[.,]/g, ''), 10);
+    for (const pattern of patterns) {
+      const match = content.match(pattern);
+      if (match) {
+        adsCount = parseInt(match[1].replace(/[.,]/g, ''), 10);
         foundMatch = true;
-        console.log('Found via about ads pattern:', adsCount);
+        console.log(`Found via pattern: ${adsCount}`);
+        break;
       }
     }
 
-    // Pattern 3: Look for number followed by "ads" in various formats
-    if (!foundMatch) {
-      const adsPattern = /(\d{1,3}(?:[.,]\d{3})*)\s*(?:ads?|anúncios?|anuncios?)/i;
-      const adsMatch = content.match(adsPattern);
-      if (adsMatch) {
-        adsCount = parseInt(adsMatch[1].replace(/[.,]/g, ''), 10);
-        foundMatch = true;
-        console.log('Found via ads pattern:', adsCount);
-      }
-    }
-
-    // Pattern 4: Look in HTML for specific Meta Ad Library elements
-    if (!foundMatch && htmlContent) {
-      // Try to find the count in aria-labels or specific divs
-      const htmlCountPattern = /(?:showing|mostrando|displaying).*?(\d{1,3}(?:[.,]\d{3})*)/i;
-      const htmlMatch = htmlContent.match(htmlCountPattern);
-      if (htmlMatch) {
-        adsCount = parseInt(htmlMatch[1].replace(/[.,]/g, ''), 10);
-        foundMatch = true;
-        console.log('Found via HTML pattern:', adsCount);
-      }
-    }
-
-    // Pattern 5: Look for "Showing X of Y" pattern
-    if (!foundMatch) {
-      const showingPattern = /(?:showing|mostrando)\s*\d+\s*(?:of|de)\s*(\d{1,3}(?:[.,]\d{3})*)/i;
-      const showingMatch = content.match(showingPattern);
-      if (showingMatch) {
-        adsCount = parseInt(showingMatch[1].replace(/[.,]/g, ''), 10);
-        foundMatch = true;
-        console.log('Found via showing pattern:', adsCount);
-      }
-    }
-
-    // Pattern 6: Generic large number in content (fallback - less reliable)
     if (!foundMatch) {
       const allNumbers = content.match(/\d{1,3}(?:[.,]\d{3})+|\d{4,}/g);
-      if (allNumbers && allNumbers.length > 0) {
-        // Take the first reasonably sized number that could be an ads count
+      if (allNumbers) {
         for (const numStr of allNumbers) {
           const num = parseInt(numStr.replace(/[.,]/g, ''), 10);
-          if (num >= 1 && num <= 10000000) { // Reasonable range for ads count
+          if (num >= 1 && num <= 10000000) {
             adsCount = num;
             foundMatch = true;
-            console.log('Found via fallback number pattern:', adsCount);
+            console.log('Found via fallback:', adsCount);
             break;
           }
         }
@@ -181,17 +271,76 @@ serve(async (req) => {
 
     console.log(`Final ads count for monitor ${monitor_id}: ${adsCount}, found: ${foundMatch}`);
 
-    // Record the reading in the database
-    const { error: insertError } = await supabase.from('readings').insert({
-      monitor_id,
-      ads_active_count: adsCount,
-      source_method: 'public_parse',
-      status: foundMatch ? 'ok' : 'error',
-      error_message: foundMatch ? null : 'Could not extract ads count from page',
-    });
+    // Insert reading
+    const { data: readingData, error: insertError } = await supabase
+      .from('readings')
+      .insert({
+        monitor_id,
+        ads_active_count: adsCount,
+        source_method: 'public_parse',
+        status: foundMatch ? 'ok' : 'error',
+        error_message: foundMatch ? null : 'Could not extract ads count from page',
+      })
+      .select('id')
+      .single();
 
     if (insertError) {
       console.error('Error inserting reading:', insertError);
+    }
+
+    // Extract individual ads and save to ad_details
+    const extractedAds = extractAdsFromContent(htmlContent, markdownContent);
+    let savedAdsCount = 0;
+
+    if (extractedAds.length > 0) {
+      const now = new Date().toISOString();
+
+      for (const ad of extractedAds) {
+        const daysActive = calculateDaysActive(ad.ad_start_date);
+
+        // Upsert ad details
+        const { error: upsertError } = await supabase
+          .from('ad_details')
+          .upsert(
+            {
+              monitor_id,
+              ad_archive_id: ad.ad_archive_id,
+              ad_start_date: ad.ad_start_date,
+              ad_body: ad.ad_body,
+              ad_title: ad.ad_title,
+              preview_url: ad.preview_url,
+              link_url: ad.link_url,
+              platforms: ad.platforms,
+              days_active: daysActive,
+              is_active: true,
+              last_seen_at: now,
+              updated_at: now,
+            },
+            {
+              onConflict: 'monitor_id,ad_archive_id',
+              ignoreDuplicates: false,
+            }
+          );
+
+        if (upsertError) {
+          console.error(`Error upserting ad ${ad.ad_archive_id}:`, upsertError);
+        } else {
+          savedAdsCount++;
+        }
+      }
+
+      // Update last_seen and is_active for seen ads
+      const adIds = extractedAds.map(a => a.ad_archive_id);
+      await supabase
+        .from('ad_details')
+        .update({ 
+          last_seen_at: now,
+          is_active: true,
+        })
+        .eq('monitor_id', monitor_id)
+        .in('ad_archive_id', adIds);
+
+      console.log(`Saved ${savedAdsCount} ad details for monitor ${monitor_id}`);
     }
 
     return new Response(
@@ -200,6 +349,8 @@ serve(async (req) => {
         ads_count: adsCount,
         found_match: foundMatch,
         source_method: 'public_parse',
+        extracted_ads: extractedAds.length,
+        saved_ads: savedAdsCount,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

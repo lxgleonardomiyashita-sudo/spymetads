@@ -6,6 +6,7 @@ import { TagChip } from "@/components/ui/tag-chip";
 import { NewMonitorDialog } from "@/components/monitors/NewMonitorDialog";
 import { ManageTagsDialog } from "@/components/monitors/ManageTagsDialog";
 import { EditMonitorDialog } from "@/components/monitors/EditMonitorDialog";
+import { MonitorInsightsDialog } from "@/components/monitors/MonitorInsightsDialog";
 import {
   Plus,
   Search,
@@ -21,6 +22,7 @@ import {
   Tags,
   Folder,
   ExternalLink,
+  BarChart3,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -82,6 +84,8 @@ function MonitoresContent() {
   const [groups, setGroups] = useState<Group[]>([]);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [selectedMonitorForEdit, setSelectedMonitorForEdit] = useState<Monitor | null>(null);
+  const [insightsDialogOpen, setInsightsDialogOpen] = useState(false);
+  const [selectedMonitorForInsights, setSelectedMonitorForInsights] = useState<Monitor | null>(null);
 
   const fetchMonitors = async () => {
     if (!user) return;
@@ -284,6 +288,11 @@ function MonitoresContent() {
     setEditDialogOpen(true);
   };
 
+  const openInsightsDialog = (monitor: Monitor) => {
+    setSelectedMonitorForInsights(monitor);
+    setInsightsDialogOpen(true);
+  };
+
   const removeTagFromMonitor = async (monitorId: string, tagId: string) => {
     try {
       const { error } = await supabase
@@ -410,6 +419,15 @@ function MonitoresContent() {
                   </span>
                 </div>
                 <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={() => openInsightsDialog(monitor)}
+                    title="Ver Insights"
+                  >
+                    <BarChart3 className="h-3.5 w-3.5" />
+                  </Button>
                   <Button
                     variant="ghost"
                     size="icon"
@@ -617,6 +635,12 @@ function MonitoresContent() {
             }}
           />
         )}
+
+        <MonitorInsightsDialog
+          open={insightsDialogOpen}
+          onOpenChange={setInsightsDialogOpen}
+          monitor={selectedMonitorForInsights}
+        />
       </div>
     </AppLayout>
   );
