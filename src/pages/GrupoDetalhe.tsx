@@ -17,6 +17,7 @@ import {
   Pause,
   Tags,
   Folder,
+  Link2,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -28,6 +29,8 @@ import {
 import { TagChip } from "@/components/ui/tag-chip";
 import { ManageTagsDialog } from "@/components/monitors/ManageTagsDialog";
 import { EditMonitorDialog } from "@/components/monitors/EditMonitorDialog";
+import { NewMonitorDialog } from "@/components/monitors/NewMonitorDialog";
+import { LinkMonitorsDialog } from "@/components/monitors/LinkMonitorsDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
@@ -82,6 +85,8 @@ function GrupoDetalheContent() {
   const [selectedMonitorForTags, setSelectedMonitorForTags] = useState<Monitor | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [selectedMonitorForEdit, setSelectedMonitorForEdit] = useState<Monitor | null>(null);
+  const [newMonitorDialogOpen, setNewMonitorDialogOpen] = useState(false);
+  const [linkMonitorsDialogOpen, setLinkMonitorsDialogOpen] = useState(false);
 
   const fetchGroup = async () => {
     if (!user || !id) return;
@@ -363,29 +368,44 @@ function GrupoDetalheContent() {
     <AppLayout>
       <div className="space-y-6 fade-in">
         {/* Header */}
-        <div className="flex items-center gap-4">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => navigate('/grupos')}
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <div className="flex items-center gap-3">
-            {group && (
-              <div
-                className="flex h-10 w-10 items-center justify-center rounded-lg"
-                style={{ backgroundColor: `${group.color}20` }}
-              >
-                <Folder className="h-5 w-5" style={{ color: group.color }} />
-              </div>
-            )}
-            <div>
-              <h1 className="text-2xl font-bold text-foreground">{group?.name}</h1>
-              {group?.description && (
-                <p className="text-muted-foreground text-sm">{group.description}</p>
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => navigate('/grupos')}
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+            <div className="flex items-center gap-3">
+              {group && (
+                <div
+                  className="flex h-10 w-10 items-center justify-center rounded-lg"
+                  style={{ backgroundColor: `${group.color}20` }}
+                >
+                  <Folder className="h-5 w-5" style={{ color: group.color }} />
+                </div>
               )}
+              <div>
+                <h1 className="text-2xl font-bold text-foreground">{group?.name}</h1>
+                {group?.description && (
+                  <p className="text-muted-foreground text-sm">{group.description}</p>
+                )}
+              </div>
             </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setLinkMonitorsDialogOpen(true)}
+            >
+              <Link2 className="h-4 w-4 mr-2" />
+              Vincular Existentes
+            </Button>
+            <Button onClick={() => setNewMonitorDialogOpen(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Novo Monitor
+            </Button>
           </div>
         </div>
 
@@ -425,15 +445,21 @@ function GrupoDetalheContent() {
               Nenhum monitor neste grupo
             </h3>
             <p className="text-muted-foreground mt-1">
-              Adicione monitores a este grupo na página de Monitores.
+              Crie um novo monitor ou vincule monitores existentes a este grupo.
             </p>
-            <Button
-              className="mt-4"
-              onClick={() => navigate('/monitores')}
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Ir para Monitores
-            </Button>
+            <div className="flex items-center justify-center gap-3 mt-4">
+              <Button
+                variant="outline"
+                onClick={() => setLinkMonitorsDialogOpen(true)}
+              >
+                <Link2 className="h-4 w-4 mr-2" />
+                Vincular Existentes
+              </Button>
+              <Button onClick={() => setNewMonitorDialogOpen(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Novo Monitor
+              </Button>
+            </div>
           </div>
         ) : (
           <div className="space-y-3">
@@ -635,6 +661,30 @@ function GrupoDetalheContent() {
               fetchTags();
             }}
           />
+        )}
+
+        {group && (
+          <>
+            <NewMonitorDialog
+              open={newMonitorDialogOpen}
+              onOpenChange={setNewMonitorDialogOpen}
+              onSuccess={() => {
+                fetchMonitors();
+                fetchTags();
+              }}
+              existingTags={tags}
+              existingGroups={allGroups}
+              defaultGroupId={group.id}
+            />
+
+            <LinkMonitorsDialog
+              open={linkMonitorsDialogOpen}
+              onOpenChange={setLinkMonitorsDialogOpen}
+              groupId={group.id}
+              groupName={group.name}
+              onSuccess={fetchMonitors}
+            />
+          </>
         )}
       </div>
     </AppLayout>
