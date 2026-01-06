@@ -36,6 +36,7 @@ interface NewMonitorDialogProps {
   onSuccess?: () => void;
   existingTags: Array<{ id: string; name: string; type: 'nicho' | 'idioma' | 'pais' | 'custom' }>;
   existingGroups: Group[];
+  defaultGroupId?: string;
 }
 
 const monitorSchema = z.object({
@@ -71,7 +72,7 @@ const INTERVALS = [
   { value: 60, label: 'A cada 60 minutos' },
 ];
 
-export function NewMonitorDialog({ open, onOpenChange, onSuccess, existingTags, existingGroups }: NewMonitorDialogProps) {
+export function NewMonitorDialog({ open, onOpenChange, onSuccess, existingTags, existingGroups, defaultGroupId }: NewMonitorDialogProps) {
   const { user } = useAuth();
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -82,7 +83,7 @@ export function NewMonitorDialog({ open, onOpenChange, onSuccess, existingTags, 
   const [selectedDays, setSelectedDays] = useState<string[]>(DAYS.map(d => d.value));
   const [selectedWindows, setSelectedWindows] = useState<string[]>(WINDOWS.map(w => w.value));
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(defaultGroupId || null);
   const [newTagName, setNewTagName] = useState("");
   const [newTagType, setNewTagType] = useState<'nicho' | 'idioma' | 'pais' | 'custom'>('nicho');
   const [isLoading, setIsLoading] = useState(false);
