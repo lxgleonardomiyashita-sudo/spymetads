@@ -268,12 +268,122 @@ function DashboardContent() {
     fetchData();
   }, [user]);
 
-  // Calculate derived data
+  // Filter monitors based on selection
+  const filteredMonitors = useMemo(() => {
+    return monitors.filter(m => {
+      if (selectedMonitorId) return m.id === selectedMonitorId;
+      if (selectedGroupId) return m.group_id === selectedGroupId;
+      return true;
+    });
+  }, [monitors, selectedMonitorId, selectedGroupId]);
+
+  // Filter readings based on selection and period
+  const filteredReadings = useMemo(() => {
+    const periodMs: Record<string, number> = {
+      '24h': 24 * 60 * 60 * 1000,
+      '48h': 48 * 60 * 60 * 1000,
+      '7d': 7 * 24 * 60 * 60 * 1000,
+      '14d': 14 * 24 * 60 * 60 * 1000,
+      '30d': 30 * 24 * 60 * 60 * 1000,
+    };
+
+    const now = Date.now();
+    const maxAge = periodMs[period] || periodMs['24h'];
+
+    let readings = allReadingsRaw.filter(r => {
+      const readingAge = now - new Date(r.timestamp).getTime();
+      return readingAge <= maxAge;
+    });
+
+    // Filter by monitor
+    if (selectedMonitorId) {
+      readings = readings.filter(r => r.monitor_id === selectedMonitorId);
+    }
+
+    // Filter by group
+    if (selectedGroupId) {
+      const groupMonitorIds = monitors
+        .filter(m => m.group_id === selectedGroupId)
+        .map(m => m.id);
+      readings = readings.filter(r => groupMonitorIds.includes(r.monitor_id));
+    }
+
+    return readings;
+  }, [allReadingsRaw, selectedMonitorId, selectedGroupId, monitors, period]);
+
+  // Calculate filtered chart data
+  const filteredChartData = useMemo(() => {
+    const isLongPeriod = period === '7d' || period === '14d' || period === '30d';
+    const dataByKey: Record<string, number[]> = {};
+
+    filteredReadings.forEach((r) => {
+      const date = new Date(r.timestamp);
+      const key = isLongPeriod
+        ? date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+        : `${date.getHours().toString().padStart(2, '0')}:00`;
+
+      if (!dataByKey[key]) dataByKey[key] = [];
+      dataByKey[key].push(r.ads_active_count);
+    });
+
+    return Object.entries(dataByKey)
+      .map(([time, values]) => ({
+        time,
+        value: Math.round(values.reduce((a, b) => a + b, 0) / values.length),
+      }))
+      .sort((a, b) => {
+        // Sort by date for long periods, by hour for short
+        if (isLongPeriod) {
+          const [dayA, monthA] = a.time.split('/').map(Number);
+          const [dayB, monthB] = b.time.split('/').map(Number);
+          return monthA !== monthB ? monthA - monthB : dayA - dayB;
+        }
+        return a.time.localeCompare(b.time);
+      });
+  }, [filteredReadings, period]);
+
+  // Get filtered stats
+  const filteredStats = useMemo(() => ({
+    activeMonitors: filteredMonitors.filter(m => m.is_active).length,
+    totalMonitors: filteredMonitors.length,
+    totalAds: filteredMonitors.reduce((sum, m) => sum + (m.latest_reading?.ads_active_count || 0), 0),
+  }), [filteredMonitors]);
+
+  // Calculate filtered 24h change percentage
+  const filteredChange24h = useMemo(() => {
+    if (filteredMonitors.length === 0) return 0;
+
+    const currentTotal = filteredMonitors.reduce(
+      (sum, m) => sum + (m.latest_reading?.ads_active_count || 0),
+      0
+    );
+
+    const twentyFourHoursAgo = Date.now() - 24 * 60 * 60 * 1000;
+    const monitorIds = new Set(filteredMonitors.map(m => m.id));
+
+    // Get last reading before 24h ago for each filtered monitor
+    const previousByMonitor: Record<string, number> = {};
+    allReadingsRaw
+      .filter(r => monitorIds.has(r.monitor_id) && new Date(r.timestamp).getTime() <= twentyFourHoursAgo)
+      .forEach(r => {
+        if (!previousByMonitor[r.monitor_id]) {
+          previousByMonitor[r.monitor_id] = r.ads_active_count;
+        }
+      });
+
+    const previousTotal = Object.values(previousByMonitor).reduce((a, b) => a + b, 0);
+
+    return previousTotal > 0
+      ? Math.round(((currentTotal - previousTotal) / previousTotal) * 100)
+      : 0;
+  }, [filteredMonitors, allReadingsRaw]);
+
+  // Calculate derived data (insights, rankings, market pulse) based on filtered monitors
   const { insights, marketPulse, rankings, marketTrend } = useMemo(() => {
     const insights: Insight[] = [];
     
-    // Generate insights based on monitor changes
-    monitors.forEach(m => {
+    // Generate insights based on filtered monitor changes
+    filteredMonitors.forEach(m => {
       if (m.change24h >= 20) {
         insights.push({
           id: `growth-${m.id}`,
@@ -303,17 +413,37 @@ function DashboardContent() {
       return priorityOrder[a.priority] - priorityOrder[b.priority];
     });
 
-    // Calculate market pulse
-    const totalChange = stats.totalAds24hAgo > 0 
-      ? ((stats.totalAds - stats.totalAds24hAgo) / stats.totalAds24hAgo) * 100 
+    // Calculate market pulse based on filtered data
+    const filteredTotalAds = filteredStats.totalAds;
+    
+    // Get 24h ago total for filtered monitors
+    const twentyFourHoursAgo = Date.now() - 24 * 60 * 60 * 1000;
+    const monitorIds = new Set(filteredMonitors.map(m => m.id));
+    const previousByMonitor: Record<string, number> = {};
+    allReadingsRaw
+      .filter(r => monitorIds.has(r.monitor_id) && new Date(r.timestamp).getTime() <= twentyFourHoursAgo)
+      .forEach(r => {
+        if (!previousByMonitor[r.monitor_id]) {
+          previousByMonitor[r.monitor_id] = r.ads_active_count;
+        }
+      });
+    const filteredTotalAds24hAgo = Object.values(previousByMonitor).reduce((a, b) => a + b, 0);
+
+    const totalChange = filteredTotalAds24hAgo > 0 
+      ? ((filteredTotalAds - filteredTotalAds24hAgo) / filteredTotalAds24hAgo) * 100 
       : 0;
     
-    const avgComparison = stats.avgAdsLast30d > 0
-      ? ((stats.totalAds - stats.avgAdsLast30d) / stats.avgAdsLast30d) * 100
+    // Calculate 30d average for filtered monitors
+    const filteredAvg30d = filteredReadings.length > 0
+      ? filteredReadings.reduce((sum, r) => sum + r.ads_active_count, 0) / filteredReadings.length
+      : 0;
+
+    const avgComparison = filteredAvg30d > 0
+      ? ((filteredTotalAds - filteredAvg30d) / filteredAvg30d) * 100
       : 0;
 
     // Temperature based on activity and growth
-    const activeRatio = stats.totalMonitors > 0 ? stats.activeMonitors / stats.totalMonitors : 0;
+    const activeRatio = filteredStats.totalMonitors > 0 ? filteredStats.activeMonitors / filteredStats.totalMonitors : 0;
     const growthNormalized = Math.min(Math.max((totalChange + 50) / 100, 0), 1);
     const temperature = Math.round((activeRatio * 40) + (growthNormalized * 40) + (stats.successRate / 100 * 20));
 
@@ -323,8 +453,8 @@ function DashboardContent() {
       avgComparison,
     };
 
-    // Rankings
-    const topByAds = [...monitors]
+    // Rankings based on filtered monitors
+    const topByAds = [...filteredMonitors]
       .filter(m => m.latest_reading)
       .sort((a, b) => (b.latest_reading?.ads_active_count || 0) - (a.latest_reading?.ads_active_count || 0))
       .slice(0, 3)
@@ -335,7 +465,7 @@ function DashboardContent() {
         change: m.change24h,
       }));
 
-    const rising = [...monitors]
+    const rising = [...filteredMonitors]
       .filter(m => m.change24h > 0)
       .sort((a, b) => b.change24h - a.change24h)
       .slice(0, 3)
@@ -346,7 +476,7 @@ function DashboardContent() {
         change: m.change24h,
       }));
 
-    const falling = [...monitors]
+    const falling = [...filteredMonitors]
       .filter(m => m.change24h < 0)
       .sort((a, b) => a.change24h - b.change24h)
       .slice(0, 3)
@@ -359,28 +489,14 @@ function DashboardContent() {
 
     const rankings = { topByAds, rising, falling };
 
-    // Market trend
+    // Market trend based on filtered data
     const marketTrend = {
       trend: totalChange > 5 ? 'up' as const : totalChange < -5 ? 'down' as const : 'stable' as const,
       percentage: totalChange,
     };
 
     return { insights, marketPulse, rankings, marketTrend };
-  }, [monitors, stats]);
-
-  // Filter monitors based on selection
-  const filteredMonitors = monitors.filter(m => {
-    if (selectedMonitorId) return m.id === selectedMonitorId;
-    if (selectedGroupId) return m.group_id === selectedGroupId;
-    return true;
-  });
-
-  // Get filtered stats
-  const filteredStats = {
-    activeMonitors: filteredMonitors.filter(m => m.is_active).length,
-    totalMonitors: filteredMonitors.length,
-    totalAds: filteredMonitors.reduce((sum, m) => sum + (m.latest_reading?.ads_active_count || 0), 0),
-  };
+  }, [filteredMonitors, filteredStats, filteredReadings, allReadingsRaw, stats.successRate]);
 
   const selectedMonitor = selectedMonitorId ? monitors.find(m => m.id === selectedMonitorId) : null;
   const selectedGroup = selectedGroupId ? groups.find(g => g.id === selectedGroupId) : null;
@@ -389,11 +505,6 @@ function DashboardContent() {
     setSelectedMonitorId(null);
     setSelectedGroupId(null);
   };
-
-  // Calculate 24h change percentage
-  const change24h = stats.totalAds24hAgo > 0
-    ? Math.round(((stats.totalAds - stats.totalAds24hAgo) / stats.totalAds24hAgo) * 100)
-    : 0;
 
   // Get top performer
   const topPerformer = monitors.reduce((top, m) => {
@@ -512,7 +623,7 @@ function DashboardContent() {
             title="Total de Anúncios"
             value={filteredStats.totalAds.toLocaleString('pt-BR')}
             icon={<TrendingUp className="h-5 w-5" />}
-            trend={change24h !== 0 ? { value: change24h, label: "vs 24h" } : undefined}
+            trend={filteredChange24h !== 0 ? { value: filteredChange24h, label: "vs 24h" } : undefined}
           />
           <MetricCard
             title="Média por Monitor"
@@ -613,14 +724,14 @@ function DashboardContent() {
         </div>
 
         {/* Chart */}
-        {chartData.length > 0 ? (
+        {filteredChartData.length > 0 ? (
           <ActiveAdsLineChart
-            data={chartData}
+            data={filteredChartData}
             title={selectedMonitor 
               ? `Anúncios Ativos - ${selectedMonitor.name}` 
               : selectedGroup
               ? `Anúncios Ativos - Grupo ${selectedGroup.name}`
-              : "Anúncios Ativos - Últimas 24 horas"}
+              : `Anúncios Ativos - ${period === '24h' ? 'Últimas 24 horas' : period === '48h' ? 'Últimas 48 horas' : period === '7d' ? 'Últimos 7 dias' : period === '14d' ? 'Últimos 14 dias' : 'Últimos 30 dias'}`}
           />
         ) : (
           <div className="metric-card flex items-center justify-center h-[300px]">
