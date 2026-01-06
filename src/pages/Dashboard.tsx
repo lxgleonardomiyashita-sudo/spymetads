@@ -938,7 +938,7 @@ function DashboardContent() {
 
           {/* Monitor Status Cards */}
           {!comparisonMode && filteredMonitors.length > 0 && (
-            <div className="-mt-4">
+            <div className="-mt-8">
               <div className="flex items-center justify-between mb-3">
                 <h2 className="text-lg font-semibold text-foreground">
                   Status dos Monitores
