@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import {
@@ -24,11 +24,25 @@ import {
   ResponsiveContainer,
   Legend,
 } from "recharts";
+import { TagFilter } from "@/components/analytics/TagFilter";
+import { BenchmarkingMetrics } from "@/components/analytics/BenchmarkingMetrics";
+import { DistributionCharts } from "@/components/analytics/DistributionCharts";
 
 interface Group {
   id: string;
   name: string;
   color: string;
+}
+
+interface Tag {
+  id: string;
+  name: string;
+  type: string;
+}
+
+interface MonitorTag {
+  monitor_id: string;
+  tag_id: string;
 }
 
 interface Monitor {
@@ -52,9 +66,12 @@ function AnalisisContent() {
   const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [groups, setGroups] = useState<Group[]>([]);
+  const [tags, setTags] = useState<Tag[]>([]);
+  const [monitorTags, setMonitorTags] = useState<MonitorTag[]>([]);
   const [monitors, setMonitors] = useState<Monitor[]>([]);
   const [readings, setReadings] = useState<Reading[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState<string>("all");
+  const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [period, setPeriod] = useState<string>("7");
   const [chartData, setChartData] = useState<ChartData[]>([]);
 
@@ -64,13 +81,17 @@ function AnalisisContent() {
     const fetchData = async () => {
       setIsLoading(true);
       try {
-        const [groupsRes, monitorsRes] = await Promise.all([
+        const [groupsRes, monitorsRes, tagsRes, monitorTagsRes] = await Promise.all([
           supabase.from("groups").select("id, name, color").eq("user_id", user.id),
           supabase.from("monitors").select("id, name, group_id").eq("user_id", user.id),
+          supabase.from("tags").select("id, name, type").eq("user_id", user.id),
+          supabase.from("monitor_tags").select("monitor_id, tag_id"),
         ]);
 
         if (groupsRes.data) setGroups(groupsRes.data);
         if (monitorsRes.data) setMonitors(monitorsRes.data);
+        if (tagsRes.data) setTags(tagsRes.data);
+        if (monitorTagsRes.data) setMonitorTags(monitorTagsRes.data);
       } catch (error) {
         console.error("Error fetching data:", error);
       } finally {
@@ -81,6 +102,28 @@ function AnalisisContent() {
     fetchData();
   }, [user]);
 
+  // Filter monitors by group and tags
+  const filteredMonitorIds = useMemo(() => {
+    let filtered = monitors;
+
+    // Filter by group
+    if (selectedGroupId !== "all") {
+      filtered = filtered.filter((m) => m.group_id === selectedGroupId);
+    }
+
+    // Filter by tags (AND logic - must have ALL selected tags)
+    if (selectedTagIds.length > 0) {
+      filtered = filtered.filter((m) => {
+        const monitorTagIds = monitorTags
+          .filter((mt) => mt.monitor_id === m.id)
+          .map((mt) => mt.tag_id);
+        return selectedTagIds.every((tagId) => monitorTagIds.includes(tagId));
+      });
+    }
+
+    return filtered.map((m) => m.id);
+  }, [monitors, selectedGroupId, selectedTagIds, monitorTags]);
+
   useEffect(() => {
     if (!user || monitors.length === 0) return;
 
@@ -88,11 +131,6 @@ function AnalisisContent() {
       const days = parseInt(period);
       const startDate = startOfDay(subDays(new Date(), days)).toISOString();
       const endDate = endOfDay(new Date()).toISOString();
-
-      const filteredMonitorIds =
-        selectedGroupId === "all"
-          ? monitors.map((m) => m.id)
-          : monitors.filter((m) => m.group_id === selectedGroupId).map((m) => m.id);
 
       if (filteredMonitorIds.length === 0) {
         setReadings([]);
@@ -115,7 +153,7 @@ function AnalisisContent() {
     };
 
     fetchReadings();
-  }, [user, monitors, selectedGroupId, period]);
+  }, [user, monitors, filteredMonitorIds, period]);
 
   const processChartData = (readingsData: Reading[], monitorIds: string[]) => {
     const days = parseInt(period);
@@ -150,11 +188,9 @@ function AnalisisContent() {
     setChartData(chartDataArr);
   };
 
-  const getMonitorStats = () => {
-    const filteredMonitors =
-      selectedGroupId === "all"
-        ? monitors
-        : monitors.filter((m) => m.group_id === selectedGroupId);
+  // Calculate statistics for filtered monitors
+  const stats = useMemo(() => {
+    const filteredMonitors = monitors.filter((m) => filteredMonitorIds.includes(m.id));
 
     return filteredMonitors.map((monitor) => {
       const monitorReadings = readings.filter((r) => r.monitor_id === monitor.id);
@@ -167,12 +203,119 @@ function AnalisisContent() {
 
       return { monitor, current, change, trend: trend as "up" | "down" | "neutral" };
     });
-  };
+  }, [monitors, filteredMonitorIds, readings]);
 
-  const stats = getMonitorStats();
-  const filteredMonitors =
-    selectedGroupId === "all" ? monitors : monitors.filter((m) => m.group_id === selectedGroupId);
+  // Calculate benchmarking metrics
+  const benchmarkingData = useMemo(() => {
+    if (stats.length === 0) {
+      return {
+        activityIndex: 0,
+        volatility: 0,
+        growthRate: 0,
+        concentration: 0,
+        topRising: [],
+        topFalling: [],
+        dominantMonitors: [],
+        diversification: { active: 0, total: monitors.length },
+      };
+    }
 
+    // Activity Index: average ads per monitor
+    const totalAds = stats.reduce((sum, s) => sum + s.current, 0);
+    const activityIndex = totalAds / stats.length;
+
+    // Volatility: standard deviation
+    const mean = activityIndex;
+    const variance = stats.reduce((sum, s) => sum + Math.pow(s.current - mean, 2), 0) / stats.length;
+    const volatility = Math.sqrt(variance);
+
+    // Growth Rate: average change
+    const growthRate = stats.reduce((sum, s) => sum + s.change, 0) / stats.length;
+
+    // Concentration (HHI): sum of squared market shares
+    const shares = stats.map((s) => (totalAds > 0 ? s.current / totalAds : 0));
+    const concentration = shares.reduce((sum, share) => sum + Math.pow(share, 2), 0);
+
+    // Top Rising
+    const topRising = stats
+      .filter((s) => s.change > 0)
+      .sort((a, b) => b.change - a.change)
+      .slice(0, 3)
+      .map((s) => ({ name: s.monitor.name, change: s.change }));
+
+    // Top Falling
+    const topFalling = stats
+      .filter((s) => s.change < 0)
+      .sort((a, b) => a.change - b.change)
+      .slice(0, 3)
+      .map((s) => ({ name: s.monitor.name, change: s.change }));
+
+    // Dominant Monitors (>20% market share)
+    const dominantMonitors = stats
+      .filter((s) => totalAds > 0 && s.current / totalAds > 0.2)
+      .map((s) => ({ name: s.monitor.name, share: (s.current / totalAds) * 100 }))
+      .sort((a, b) => b.share - a.share);
+
+    // Diversification
+    const activeMonitors = stats.filter((s) => s.current > 0).length;
+
+    return {
+      activityIndex,
+      volatility,
+      growthRate,
+      concentration,
+      topRising,
+      topFalling,
+      dominantMonitors,
+      diversification: { active: activeMonitors, total: monitors.length },
+    };
+  }, [stats, monitors.length]);
+
+  // Calculate distribution data
+  const distributionData = useMemo(() => {
+    // Group distribution
+    const groupAds: Record<string, number> = {};
+    stats.forEach((s) => {
+      const group = groups.find((g) => g.id === s.monitor.group_id);
+      const groupName = group?.name || "Sem grupo";
+      const groupColor = group?.color || "#6b7280";
+      const key = `${groupName}|${groupColor}`;
+      groupAds[key] = (groupAds[key] || 0) + s.current;
+    });
+
+    const groupDistribution = Object.entries(groupAds).map(([key, value]) => {
+      const [name, color] = key.split("|");
+      return { name, value, color };
+    });
+
+    // Tag distribution
+    const tagAds: Record<string, { value: number; type: string }> = {};
+    stats.forEach((s) => {
+      const monitorTagIds = monitorTags
+        .filter((mt) => mt.monitor_id === s.monitor.id)
+        .map((mt) => mt.tag_id);
+      
+      monitorTagIds.forEach((tagId) => {
+        const tag = tags.find((t) => t.id === tagId);
+        if (tag) {
+          if (!tagAds[tag.name]) {
+            tagAds[tag.name] = { value: 0, type: tag.type };
+          }
+          tagAds[tag.name].value += s.current;
+        }
+      });
+    });
+
+    const tagDistribution = Object.entries(tagAds).map(([name, data]) => ({
+      name,
+      value: data.value,
+      type: data.type,
+    }));
+
+    return { groupDistribution, tagDistribution };
+  }, [stats, groups, tags, monitorTags]);
+
+  const filteredMonitors = monitors.filter((m) => filteredMonitorIds.includes(m.id));
   const chartColors = ["#22d3ee", "#a855f7", "#22c55e", "#f59e0b", "#ef4444", "#3b82f6", "#ec4899"];
 
   if (isLoading) {
@@ -188,14 +331,14 @@ function AnalisisContent() {
   return (
     <AppLayout>
       <div className="space-y-6 fade-in">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="flex flex-col gap-4">
           <div>
             <h1 className="text-2xl font-bold text-foreground">Análises</h1>
             <p className="text-muted-foreground mt-1">
-              Visualize tendências e dados históricos
+              Visualize tendências, benchmarking e dados históricos
             </p>
           </div>
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
             <Select value={selectedGroupId} onValueChange={setSelectedGroupId}>
               <SelectTrigger className="w-[180px] bg-card border-border">
                 <SelectValue placeholder="Filtrar por grupo" />
@@ -215,6 +358,13 @@ function AnalisisContent() {
                 ))}
               </SelectContent>
             </Select>
+            
+            <TagFilter
+              tags={tags}
+              selectedTagIds={selectedTagIds}
+              onSelectionChange={setSelectedTagIds}
+            />
+
             <Select value={period} onValueChange={setPeriod}>
               <SelectTrigger className="w-[140px] bg-card border-border">
                 <SelectValue />
@@ -233,6 +383,13 @@ function AnalisisContent() {
             <BarChart3 className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
             <p className="text-muted-foreground">
               Crie monitores para começar a visualizar análises.
+            </p>
+          </div>
+        ) : filteredMonitors.length === 0 ? (
+          <div className="metric-card text-center py-12">
+            <BarChart3 className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+            <p className="text-muted-foreground">
+              Nenhum monitor corresponde aos filtros selecionados.
             </p>
           </div>
         ) : (
@@ -276,7 +433,7 @@ function AnalisisContent() {
               ))}
             </div>
 
-            {/* Chart */}
+            {/* Evolution Chart */}
             {chartData.length > 0 && filteredMonitors.length > 0 && (
               <Card className="bg-card border-border">
                 <CardHeader>
@@ -320,6 +477,15 @@ function AnalisisContent() {
                 </CardContent>
               </Card>
             )}
+
+            {/* Distribution Charts */}
+            <DistributionCharts
+              groupDistribution={distributionData.groupDistribution}
+              tagDistribution={distributionData.tagDistribution}
+            />
+
+            {/* Benchmarking Metrics */}
+            <BenchmarkingMetrics {...benchmarkingData} />
           </>
         )}
       </div>
