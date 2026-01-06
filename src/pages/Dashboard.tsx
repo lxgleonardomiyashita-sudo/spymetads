@@ -12,7 +12,7 @@ import { MonitorRanking } from "@/components/dashboard/MonitorRanking";
 import { MarketTrendIndicator } from "@/components/dashboard/MarketTrendIndicator";
 import { EnhancedMonitorCard } from "@/components/dashboard/EnhancedMonitorCard";
 import { PeriodSelector } from "@/components/dashboard/PeriodSelector";
-import { Radio, TrendingUp, Activity, AlertTriangle, Loader2, X, Zap, Target, BarChart3 } from "lucide-react";
+import { Radio, TrendingUp, Activity, AlertTriangle, Loader2, X, Zap, BarChart3 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -92,6 +92,9 @@ function DashboardContent() {
   const [comparisonSidebarOpen, setComparisonSidebarOpen] = useState(false);
   const [comparisonGroupByMode, setComparisonGroupByMode] = useState<'group' | 'tag'>('group');
   const [comparisonSelectedIds, setComparisonSelectedIds] = useState<string[]>([]);
+  
+  // Market Pulse group filter (independent from dashboard filter)
+  const [pulseGroupId, setPulseGroupId] = useState<string | null>(null);
   
   const [stats, setStats] = useState({
     activeMonitors: 0,
@@ -496,8 +499,8 @@ function DashboardContent() {
       : 0;
   }, [filteredMonitors, allReadingsRaw]);
 
-  // Calculate derived data (insights, rankings, market pulse) based on filtered monitors
-  const { insights, marketPulse, rankings, marketTrend } = useMemo(() => {
+  // Calculate derived data (insights, rankings, market trend) based on filtered monitors
+  const { insights, rankings, marketTrend } = useMemo(() => {
     const insights: Insight[] = [];
     
     // Generate insights based on filtered monitor changes
@@ -530,46 +533,6 @@ function DashboardContent() {
       const priorityOrder = { high: 0, medium: 1, low: 2 };
       return priorityOrder[a.priority] - priorityOrder[b.priority];
     });
-
-    // Calculate market pulse based on filtered data
-    const filteredTotalAds = filteredStats.totalAds;
-    
-    // Get 24h ago total for filtered monitors
-    const twentyFourHoursAgo = Date.now() - 24 * 60 * 60 * 1000;
-    const monitorIds = new Set(filteredMonitors.map(m => m.id));
-    const previousByMonitor: Record<string, number> = {};
-    allReadingsRaw
-      .filter(r => monitorIds.has(r.monitor_id) && new Date(r.timestamp).getTime() <= twentyFourHoursAgo)
-      .forEach(r => {
-        if (!previousByMonitor[r.monitor_id]) {
-          previousByMonitor[r.monitor_id] = r.ads_active_count;
-        }
-      });
-    const filteredTotalAds24hAgo = Object.values(previousByMonitor).reduce((a, b) => a + b, 0);
-
-    const totalChange = filteredTotalAds24hAgo > 0 
-      ? ((filteredTotalAds - filteredTotalAds24hAgo) / filteredTotalAds24hAgo) * 100 
-      : 0;
-    
-    // Calculate 30d average for filtered monitors
-    const filteredAvg30d = filteredReadings.length > 0
-      ? filteredReadings.reduce((sum, r) => sum + r.ads_active_count, 0) / filteredReadings.length
-      : 0;
-
-    const avgComparison = filteredAvg30d > 0
-      ? ((filteredTotalAds - filteredAvg30d) / filteredAvg30d) * 100
-      : 0;
-
-    // Temperature based on activity and growth
-    const activeRatio = filteredStats.totalMonitors > 0 ? filteredStats.activeMonitors / filteredStats.totalMonitors : 0;
-    const growthNormalized = Math.min(Math.max((totalChange + 50) / 100, 0), 1);
-    const temperature = Math.round((activeRatio * 40) + (growthNormalized * 40) + (stats.successRate / 100 * 20));
-
-    const marketPulse = {
-      temperature,
-      trend: totalChange > 2 ? 'up' as const : totalChange < -2 ? 'down' as const : 'stable' as const,
-      avgComparison,
-    };
 
     // Rankings based on filtered monitors
     const topByAds = [...filteredMonitors]
@@ -607,14 +570,83 @@ function DashboardContent() {
 
     const rankings = { topByAds, rising, falling };
 
+    // Calculate totalChange for market trend
+    const twentyFourHoursAgo = Date.now() - 24 * 60 * 60 * 1000;
+    const monitorIds = new Set(filteredMonitors.map(m => m.id));
+    const previousByMonitor: Record<string, number> = {};
+    allReadingsRaw
+      .filter(r => monitorIds.has(r.monitor_id) && new Date(r.timestamp).getTime() <= twentyFourHoursAgo)
+      .forEach(r => {
+        if (!previousByMonitor[r.monitor_id]) {
+          previousByMonitor[r.monitor_id] = r.ads_active_count;
+        }
+      });
+    const filteredTotalAds24hAgo = Object.values(previousByMonitor).reduce((a, b) => a + b, 0);
+    const totalChange = filteredTotalAds24hAgo > 0 
+      ? ((filteredStats.totalAds - filteredTotalAds24hAgo) / filteredTotalAds24hAgo) * 100 
+      : 0;
+
     // Market trend based on filtered data
     const marketTrend = {
       trend: totalChange > 5 ? 'up' as const : totalChange < -5 ? 'down' as const : 'stable' as const,
       percentage: totalChange,
     };
 
-    return { insights, marketPulse, rankings, marketTrend };
-  }, [filteredMonitors, filteredStats, filteredReadings, allReadingsRaw, stats.successRate]);
+    return { insights, rankings, marketTrend };
+  }, [filteredMonitors, filteredStats, allReadingsRaw]);
+
+  // Calculate market pulse based on pulse-specific group filter (independent from dashboard filter)
+  const marketPulse = useMemo(() => {
+    // Filter monitors by pulse group (or use all if null)
+    const pulseMonitors = pulseGroupId 
+      ? monitors.filter(m => m.group_id === pulseGroupId)
+      : monitors;
+
+    if (pulseMonitors.length === 0) {
+      return { temperature: 0, trend: 'stable' as const, avgComparison: 0 };
+    }
+
+    const pulseTotalAds = pulseMonitors.reduce((sum, m) => sum + (m.latest_reading?.ads_active_count || 0), 0);
+    const pulseActiveMonitors = pulseMonitors.filter(m => m.is_active).length;
+    
+    // Get 24h ago total for pulse monitors
+    const twentyFourHoursAgo = Date.now() - 24 * 60 * 60 * 1000;
+    const pulseMonitorIds = new Set(pulseMonitors.map(m => m.id));
+    const previousByMonitor: Record<string, number> = {};
+    allReadingsRaw
+      .filter(r => pulseMonitorIds.has(r.monitor_id) && new Date(r.timestamp).getTime() <= twentyFourHoursAgo)
+      .forEach(r => {
+        if (!previousByMonitor[r.monitor_id]) {
+          previousByMonitor[r.monitor_id] = r.ads_active_count;
+        }
+      });
+    const pulseTotalAds24hAgo = Object.values(previousByMonitor).reduce((a, b) => a + b, 0);
+
+    const totalChange = pulseTotalAds24hAgo > 0 
+      ? ((pulseTotalAds - pulseTotalAds24hAgo) / pulseTotalAds24hAgo) * 100 
+      : 0;
+    
+    // Calculate 30d average for pulse monitors
+    const pulseReadings = allReadingsRaw.filter(r => pulseMonitorIds.has(r.monitor_id));
+    const pulseAvg30d = pulseReadings.length > 0
+      ? pulseReadings.reduce((sum, r) => sum + r.ads_active_count, 0) / pulseReadings.length
+      : 0;
+
+    const avgComparison = pulseAvg30d > 0
+      ? ((pulseTotalAds - pulseAvg30d) / pulseAvg30d) * 100
+      : 0;
+
+    // Temperature based on activity and growth
+    const activeRatio = pulseMonitors.length > 0 ? pulseActiveMonitors / pulseMonitors.length : 0;
+    const growthNormalized = Math.min(Math.max((totalChange + 50) / 100, 0), 1);
+    const temperature = Math.round((activeRatio * 40) + (growthNormalized * 40) + (stats.successRate / 100 * 20));
+
+    return {
+      temperature,
+      trend: totalChange > 2 ? 'up' as const : totalChange < -2 ? 'down' as const : 'stable' as const,
+      avgComparison,
+    };
+  }, [monitors, pulseGroupId, allReadingsRaw, stats.successRate]);
 
   const selectedMonitor = selectedMonitorId ? monitors.find(m => m.id === selectedMonitorId) : null;
   const selectedGroup = selectedGroupId ? groups.find(g => g.id === selectedGroupId) : null;
@@ -883,7 +915,7 @@ function DashboardContent() {
           </div>
 
         {/* Metric Cards - Row 1 */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <MetricCard
             title="Monitores Ativos"
             value={filteredStats.activeMonitors.toString()}
@@ -895,13 +927,6 @@ function DashboardContent() {
             value={filteredStats.totalAds.toLocaleString('pt-BR')}
             icon={<TrendingUp className="h-5 w-5" />}
             trend={filteredChange24h !== 0 ? { value: filteredChange24h, label: "vs 24h" } : undefined}
-          />
-          <MetricCard
-            title="Média por Monitor"
-            value={filteredStats.totalMonitors > 0 
-              ? Math.round(filteredStats.totalAds / filteredStats.totalMonitors).toLocaleString('pt-BR')
-              : '0'}
-            icon={<Target className="h-5 w-5" />}
           />
           <MetricCard
             title="Leituras Hoje"
@@ -969,6 +994,9 @@ function DashboardContent() {
             temperature={marketPulse.temperature}
             trend={marketPulse.trend}
             avgComparison={marketPulse.avgComparison}
+            groups={groups}
+            selectedGroupId={pulseGroupId}
+            onGroupChange={setPulseGroupId}
           />
         </div>
 

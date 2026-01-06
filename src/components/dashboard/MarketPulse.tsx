@@ -1,14 +1,37 @@
 import { cn } from "@/lib/utils";
 import { Activity, TrendingUp, TrendingDown, Minus } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+interface Group {
+  id: string;
+  name: string;
+}
 
 interface MarketPulseProps {
   temperature: number; // 0-100
   trend: 'up' | 'down' | 'stable';
   avgComparison: number; // % above/below average
   label?: string;
+  groups?: Group[];
+  selectedGroupId?: string | null;
+  onGroupChange?: (groupId: string | null) => void;
 }
 
-export function MarketPulse({ temperature, trend, avgComparison, label = "Pulso do Mercado" }: MarketPulseProps) {
+export function MarketPulse({ 
+  temperature, 
+  trend, 
+  avgComparison, 
+  label = "Pulso do Mercado",
+  groups = [],
+  selectedGroupId,
+  onGroupChange,
+}: MarketPulseProps) {
   const getTemperatureColor = () => {
     if (temperature >= 70) return "text-success";
     if (temperature >= 40) return "text-warning";
@@ -42,7 +65,27 @@ export function MarketPulse({ temperature, trend, avgComparison, label = "Pulso 
           <Activity className={cn("h-5 w-5", getTemperatureColor())} />
           <span className="font-medium text-sm text-foreground">{label}</span>
         </div>
-        {getTrendIcon()}
+        <div className="flex items-center gap-2">
+          {groups.length > 0 && onGroupChange && (
+            <Select
+              value={selectedGroupId || "all"}
+              onValueChange={(value) => onGroupChange(value === "all" ? null : value)}
+            >
+              <SelectTrigger className="h-7 w-[130px] text-xs bg-muted/50 border-border">
+                <SelectValue placeholder="Grupo" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                {groups.map(group => (
+                  <SelectItem key={group.id} value={group.id}>
+                    {group.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          {getTrendIcon()}
+        </div>
       </div>
 
       {/* Gauge visual */}
