@@ -714,7 +714,7 @@ function DashboardContent() {
     <AppLayout>
       <div className="flex h-full">
         {/* Main Content */}
-        <div className={`flex-1 space-y-6 fade-in ${comparisonSidebarOpen ? 'pr-0' : ''}`}>
+        <div className={`flex-1 space-y-4 fade-in ${comparisonSidebarOpen ? 'pr-0' : ''}`}>
           {/* Header with Filters */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
@@ -939,11 +939,11 @@ function DashboardContent() {
           {/* Monitor Status Cards */}
           {!comparisonMode && filteredMonitors.length > 0 && (
             <div>
-              <h2 className="text-lg font-semibold text-foreground mb-4">
+              <h2 className="text-lg font-semibold text-foreground mb-3">
                 Status dos Monitores
                 {selectedGroup && <span className="text-muted-foreground font-normal ml-2">({selectedGroup.name})</span>}
               </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
                 {filteredMonitors.slice(0, 8).map((monitor) => (
                   <EnhancedMonitorCard
                     key={monitor.id}
@@ -955,6 +955,8 @@ function DashboardContent() {
                     sparklineData={monitor.sparklineData}
                     tags={monitor.tags}
                     status={monitor.is_active ? 'active' : 'inactive'}
+                    isSelected={selectedMonitorId === monitor.id}
+                    onSelect={() => setSelectedMonitorId(monitor.id)}
                     onViewCreatives={() => handleViewCreatives(monitor.ad_library_url)}
                   />
                 ))}
