@@ -296,7 +296,7 @@ export function MonitorInsightsDialog({
               )}
 
               {/* Top Scaled Ads */}
-              {topAds.length > 0 && (
+              {topAds.length > 0 ? (
                 <>
                   <Separator />
                   <div>
@@ -339,14 +339,24 @@ export function MonitorInsightsDialog({
                     </div>
                   </div>
                 </>
-              )}
-
-              {topAds.length === 0 && validReadings.length > 0 && (
-                <div className="text-center py-6 text-muted-foreground">
-                  <p className="text-sm">
-                    Dados de anúncios individuais serão coletados nas próximas leituras.
-                  </p>
-                </div>
+              ) : (
+                <>
+                  <Separator />
+                  <div className="p-4 rounded-lg bg-muted/50 border border-dashed">
+                    <h3 className="font-medium flex items-center gap-2 mb-2">
+                      <Flame className="h-4 w-4 text-orange-500" />
+                      Anúncios Mais Escalados
+                    </h3>
+                    <p className="text-sm text-muted-foreground">
+                      Os dados de anúncios individuais serão coletados automaticamente nas próximas leituras. 
+                      A Meta Ad Library não expõe IDs de anúncios diretamente no HTML público, então essa funcionalidade 
+                      depende de padrões específicos que podem variar.
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      💡 Dica: Use o botão "Abrir Ad Library" para ver os anúncios diretamente na plataforma da Meta.
+                    </p>
+                  </div>
+                </>
               )}
 
               {/* Actions */}

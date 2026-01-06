@@ -539,8 +539,8 @@ function MonitoresContent() {
               </div>
 
               {/* Tags */}
-              <div className="flex flex-wrap items-center gap-1 mt-2 min-h-[24px]">
-                {monitor.tags.slice(0, 2).map((tag) => (
+              <div className="flex flex-wrap items-center gap-1.5 mt-2 min-h-[24px]">
+                {monitor.tags.map((tag) => (
                   <TagChip
                     key={tag.id}
                     name={tag.name}
@@ -548,9 +548,6 @@ function MonitoresContent() {
                     size="sm"
                   />
                 ))}
-                {monitor.tags.length > 2 && (
-                  <span className="text-xs text-muted-foreground">+{monitor.tags.length - 2}</span>
-                )}
                 <button
                   onClick={() => openTagsDialog(monitor)}
                   className="text-xs text-muted-foreground hover:text-primary transition-colors ml-auto"
