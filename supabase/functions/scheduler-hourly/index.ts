@@ -6,15 +6,13 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Window definitions with exact hour boundaries
 const WINDOW_HOURS: Record<string, { start: number; end: number }> = {
-  dawn: { start: 0, end: 4 },      // 00:00 - 04:59
-  morning: { start: 5, end: 11 },  // 05:00 - 11:59
-  afternoon: { start: 12, end: 17 }, // 12:00 - 17:59
-  evening: { start: 18, end: 23 }, // 18:00 - 23:59
+  dawn: { start: 0, end: 4 },
+  morning: { start: 5, end: 11 },
+  afternoon: { start: 12, end: 17 },
+  evening: { start: 18, end: 23 },
 };
 
-// Get current window based on hour
 function getCurrentWindow(hour: number): string {
   if (hour >= 0 && hour <= 4) return 'dawn';
   if (hour >= 5 && hour <= 11) return 'morning';
@@ -22,18 +20,15 @@ function getCurrentWindow(hour: number): string {
   return 'evening';
 }
 
-// Convert UTC to timezone-adjusted hour
 function getLocalHour(utcDate: Date, timezone: string): number {
   try {
     const localTime = new Date(utcDate.toLocaleString('en-US', { timeZone: timezone }));
     return localTime.getHours();
   } catch {
-    // Fallback to Brazil time (UTC-3)
     return (utcDate.getUTCHours() - 3 + 24) % 24;
   }
 }
 
-// Get day abbreviation in local timezone
 function getLocalDay(utcDate: Date, timezone: string): string {
   try {
     const options: Intl.DateTimeFormatOptions = { weekday: 'short', timeZone: timezone };
@@ -43,7 +38,6 @@ function getLocalDay(utcDate: Date, timezone: string): string {
   }
 }
 
-// Check if current time is within a window
 function isWithinWindow(hour: number, windows: string[]): boolean {
   for (const windowName of windows) {
     const window = WINDOW_HOURS[windowName];
@@ -54,21 +48,99 @@ function isWithinWindow(hour: number, windows: string[]): boolean {
   return false;
 }
 
-// Check if enough time has passed since last reading based on interval
 function shouldRunBasedOnInterval(
   lastReadingTime: Date | null,
   intervalMinutes: number,
   now: Date
 ): boolean {
-  if (!lastReadingTime) {
-    return true; // Never ran, should run
-  }
-  
+  if (!lastReadingTime) return true;
   const elapsedMs = now.getTime() - lastReadingTime.getTime();
   const elapsedMinutes = elapsedMs / (1000 * 60);
-  
-  // Add small buffer (2 min) to avoid edge cases
   return elapsedMinutes >= (intervalMinutes - 2);
+}
+
+interface ExtractedAd {
+  ad_archive_id: string;
+  ad_start_date: string | null;
+  ad_body: string | null;
+  ad_title: string | null;
+  preview_url: string | null;
+  link_url: string | null;
+  platforms: string[];
+}
+
+function extractAdsFromContent(htmlContent: string, markdownContent: string): ExtractedAd[] {
+  const ads: ExtractedAd[] = [];
+  const seenIds = new Set<string>();
+
+  const adIdPattern = /ad_archive_id[=:]?\s*["']?(\d{10,20})["']?/gi;
+  let match;
+  
+  while ((match = adIdPattern.exec(htmlContent)) !== null) {
+    const adId = match[1];
+    if (!seenIds.has(adId)) {
+      seenIds.add(adId);
+      ads.push({
+        ad_archive_id: adId,
+        ad_start_date: null,
+        ad_body: null,
+        ad_title: null,
+        preview_url: null,
+        link_url: null,
+        platforms: [],
+      });
+    }
+  }
+
+  const dataAdPattern = /data-ad-archive-id=["'](\d{10,20})["']/gi;
+  while ((match = dataAdPattern.exec(htmlContent)) !== null) {
+    const adId = match[1];
+    if (!seenIds.has(adId)) {
+      seenIds.add(adId);
+      ads.push({
+        ad_archive_id: adId,
+        ad_start_date: null,
+        ad_body: null,
+        ad_title: null,
+        preview_url: null,
+        link_url: null,
+        platforms: [],
+      });
+    }
+  }
+
+  const startDatePattern = /Started running on\s*([\w\s,]+\d{4})/gi;
+  const dates: string[] = [];
+  while ((match = startDatePattern.exec(markdownContent)) !== null) {
+    dates.push(match[1].trim());
+  }
+
+  if (dates.length > 0) {
+    ads.forEach((ad, index) => {
+      if (dates[index]) {
+        try {
+          const parsed = new Date(dates[index]);
+          if (!isNaN(parsed.getTime())) {
+            ad.ad_start_date = parsed.toISOString();
+          }
+        } catch {}
+      }
+    });
+  }
+
+  return ads;
+}
+
+function calculateDaysActive(startDate: string | null): number {
+  if (!startDate) return 0;
+  try {
+    const start = new Date(startDate);
+    const now = new Date();
+    const diffDays = Math.ceil((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+    return Math.max(0, diffDays);
+  } catch {
+    return 0;
+  }
 }
 
 serve(async (req) => {
@@ -102,7 +174,6 @@ serve(async (req) => {
     const now = new Date();
     console.log(`[Scheduler] Started at ${now.toISOString()}`);
 
-    // Fetch all active monitors with their last reading
     const { data: monitors, error: monitorsError } = await supabase
       .from('monitors')
       .select('id, name, ad_library_url, schedule_config, timezone')
@@ -123,7 +194,6 @@ serve(async (req) => {
 
     console.log(`[Scheduler] Found ${monitors.length} active monitors`);
 
-    // Fetch last reading for each monitor
     const monitorIds = monitors.map(m => m.id);
     const { data: lastReadings } = await supabase
       .from('readings')
@@ -131,7 +201,6 @@ serve(async (req) => {
       .in('monitor_id', monitorIds)
       .order('timestamp', { ascending: false });
 
-    // Create map of monitor_id -> last reading timestamp
     const lastReadingMap: Record<string, Date> = {};
     if (lastReadings) {
       for (const reading of lastReadings) {
@@ -141,7 +210,6 @@ serve(async (req) => {
       }
     }
 
-    // Filter monitors that should run now
     const monitorsToRun: typeof monitors = [];
     const skipReasons: Record<string, string> = {};
 
@@ -155,42 +223,26 @@ serve(async (req) => {
       const timezone = monitor.timezone || 'America/Sao_Paulo';
       const localHour = getLocalHour(now, timezone);
       const localDay = getLocalDay(now, timezone);
-      const currentWindow = getCurrentWindow(localHour);
 
-      console.log(`[${monitor.name}] Local: ${localDay} ${localHour}:00 (${timezone}), window: ${currentWindow}`);
-      console.log(`[${monitor.name}] Config: days=${config.days.join(',')}, windows=${config.windows.join(',')}, interval=${config.interval}min`);
+      console.log(`[${monitor.name}] Local: ${localDay} ${localHour}:00 (${timezone})`);
 
-      // 1. Check if today is an active day
       if (!config.days.includes(localDay)) {
         skipReasons[monitor.id] = `Day ${localDay} not in active days`;
-        console.log(`[${monitor.name}] SKIP: ${skipReasons[monitor.id]}`);
         continue;
       }
 
-      // 2. Check if current hour is within any active window
       if (!isWithinWindow(localHour, config.windows)) {
-        skipReasons[monitor.id] = `Hour ${localHour} not within windows [${config.windows.join(', ')}]`;
-        console.log(`[${monitor.name}] SKIP: ${skipReasons[monitor.id]}`);
+        skipReasons[monitor.id] = `Hour ${localHour} not within windows`;
         continue;
       }
 
-      // 3. Check if enough time has passed since last reading
       const lastReading = lastReadingMap[monitor.id] || null;
-      const shouldRun = shouldRunBasedOnInterval(lastReading, config.interval, now);
-
-      if (!shouldRun) {
-        const minutesSince = lastReading 
-          ? Math.floor((now.getTime() - lastReading.getTime()) / (1000 * 60))
-          : 0;
-        skipReasons[monitor.id] = `Last reading ${minutesSince}min ago, interval is ${config.interval}min`;
-        console.log(`[${monitor.name}] SKIP: ${skipReasons[monitor.id]}`);
+      if (!shouldRunBasedOnInterval(lastReading, config.interval, now)) {
+        skipReasons[monitor.id] = `Interval not reached`;
         continue;
       }
 
-      const lastReadingInfo = lastReading 
-        ? `${Math.floor((now.getTime() - lastReading.getTime()) / (1000 * 60))}min ago`
-        : 'never';
-      console.log(`[${monitor.name}] WILL RUN: Last reading ${lastReadingInfo}, interval ${config.interval}min`);
+      console.log(`[${monitor.name}] WILL RUN`);
       monitorsToRun.push(monitor);
     }
 
@@ -200,16 +252,14 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({ 
           success: true, 
-          message: 'No monitors need to run at this time',
+          message: 'No monitors need to run',
           total: monitors.length,
           processed: 0,
-          skipReasons 
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Process each monitor
     const results = await Promise.allSettled(
       monitorsToRun.map(async (monitor) => {
         console.log(`[${monitor.name}] Starting scrape...`);
@@ -245,18 +295,18 @@ serve(async (req) => {
             return { monitor: monitor.name, success: false, error: scrapeData.error };
           }
 
-          // Extract ads count from content
-          const content = scrapeData.data?.markdown || scrapeData.data?.html || '';
+          const markdownContent = scrapeData.data?.markdown || '';
+          const htmlContent = scrapeData.data?.html || '';
+          const content = markdownContent || htmlContent;
+
           let adsCount = 0;
           let foundMatch = false;
 
-          // Patterns for extracting ad count
           const patterns = [
             /(\d{1,3}(?:[.,]\d{3})*)\s*(?:results?|resultados?)/i,
             /(?:about|cerca de|approximately)\s*(\d{1,3}(?:[.,]\d{3})*)\s*(?:ads?|anúncios?)/i,
             /(\d{1,3}(?:[.,]\d{3})*)\s*(?:ads?|anúncios?|anuncios?)/i,
             /(?:showing|mostrando)\s*\d+\s*(?:of|de)\s*(\d{1,3}(?:[.,]\d{3})*)/i,
-            /Total:\s*(\d{1,3}(?:[.,]\d{3})*)/i,
           ];
 
           for (const pattern of patterns) {
@@ -264,12 +314,10 @@ serve(async (req) => {
             if (match) {
               adsCount = parseInt(match[1].replace(/[.,]/g, ''), 10);
               foundMatch = true;
-              console.log(`[${monitor.name}] Matched pattern: ${pattern}, count: ${adsCount}`);
               break;
             }
           }
 
-          // Fallback: find large numbers
           if (!foundMatch) {
             const allNumbers = content.match(/\d{1,3}(?:[.,]\d{3})+|\d{4,}/g);
             if (allNumbers) {
@@ -278,7 +326,6 @@ serve(async (req) => {
                 if (num >= 1 && num <= 10000000) {
                   adsCount = num;
                   foundMatch = true;
-                  console.log(`[${monitor.name}] Fallback number found: ${adsCount}`);
                   break;
                 }
               }
@@ -286,7 +333,7 @@ serve(async (req) => {
           }
 
           // Save reading
-          const { error: insertError } = await supabase.from('readings').insert({
+          await supabase.from('readings').insert({
             monitor_id: monitor.id,
             ads_active_count: adsCount,
             source_method: 'public_parse',
@@ -294,12 +341,44 @@ serve(async (req) => {
             error_message: foundMatch ? null : 'Could not extract ads count',
           });
 
-          if (insertError) {
-            console.error(`[${monitor.name}] Insert error:`, insertError);
+          // Extract and save individual ads
+          const extractedAds = extractAdsFromContent(htmlContent, markdownContent);
+          const nowStr = new Date().toISOString();
+
+          if (extractedAds.length > 0) {
+            // Mark existing ads as potentially inactive
+            await supabase
+              .from('ad_details')
+              .update({ is_active: false })
+              .eq('monitor_id', monitor.id)
+              .lt('last_seen_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
+
+            // Upsert new ads
+            for (const ad of extractedAds) {
+              const daysActive = calculateDaysActive(ad.ad_start_date);
+
+              await supabase
+                .from('ad_details')
+                .upsert(
+                  {
+                    monitor_id: monitor.id,
+                    ad_archive_id: ad.ad_archive_id,
+                    ad_start_date: ad.ad_start_date,
+                    ad_body: ad.ad_body,
+                    days_active: daysActive,
+                    is_active: true,
+                    last_seen_at: nowStr,
+                    updated_at: nowStr,
+                  },
+                  { onConflict: 'monitor_id,ad_archive_id' }
+                );
+            }
+
+            console.log(`[${monitor.name}] Saved ${extractedAds.length} ads`);
           }
 
-          console.log(`[${monitor.name}] SUCCESS: ${adsCount} ads (matched: ${foundMatch})`);
-          return { monitor: monitor.name, success: true, ads_count: adsCount };
+          console.log(`[${monitor.name}] SUCCESS: ${adsCount} ads`);
+          return { monitor: monitor.name, success: true, ads_count: adsCount, extracted_ads: extractedAds.length };
 
         } catch (error) {
           console.error(`[${monitor.name}] Exception:`, error);

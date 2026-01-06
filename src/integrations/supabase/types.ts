@@ -14,6 +14,71 @@ export type Database = {
   }
   public: {
     Tables: {
+      ad_details: {
+        Row: {
+          ad_archive_id: string
+          ad_body: string | null
+          ad_start_date: string | null
+          ad_title: string | null
+          created_at: string | null
+          days_active: number | null
+          first_seen_at: string | null
+          id: string
+          is_active: boolean | null
+          last_seen_at: string | null
+          link_url: string | null
+          monitor_id: string
+          platforms: string[] | null
+          preview_url: string | null
+          times_seen: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          ad_archive_id: string
+          ad_body?: string | null
+          ad_start_date?: string | null
+          ad_title?: string | null
+          created_at?: string | null
+          days_active?: number | null
+          first_seen_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          last_seen_at?: string | null
+          link_url?: string | null
+          monitor_id: string
+          platforms?: string[] | null
+          preview_url?: string | null
+          times_seen?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          ad_archive_id?: string
+          ad_body?: string | null
+          ad_start_date?: string | null
+          ad_title?: string | null
+          created_at?: string | null
+          days_active?: number | null
+          first_seen_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          last_seen_at?: string | null
+          link_url?: string | null
+          monitor_id?: string
+          platforms?: string[] | null
+          preview_url?: string | null
+          times_seen?: number | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ad_details_monitor_id_fkey"
+            columns: ["monitor_id"]
+            isOneToOne: false
+            referencedRelation: "monitors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       groups: {
         Row: {
           color: string | null
