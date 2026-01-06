@@ -1022,35 +1022,9 @@ function DashboardContent() {
           />
         </div>
 
-          {/* Chart Section */}
-          {comparisonMode ? (
-            <MultiLineChart
-              series={comparisonChartSeries}
-              title={`Comparativo por ${comparisonGroupByMode === 'group' ? 'Grupo' : 'Tag'} - ${period === '24h' ? 'Últimas 24 horas' : period === '48h' ? 'Últimas 48 horas' : period === '7d' ? 'Últimos 7 dias' : period === '14d' ? 'Últimos 14 dias' : 'Últimos 30 dias'}`}
-            />
-          ) : selectedMonitorId && filteredChartData.length > 0 ? (
-            <ActiveAdsLineChart
-              data={filteredChartData}
-              title={`Anúncios Ativos - ${selectedMonitor?.name}`}
-            />
-          ) : multiMonitorChartSeries.length > 0 ? (
-            <MultiLineChart
-              series={multiMonitorChartSeries}
-              title={selectedGroup
-                ? `Comparativo - Grupo ${selectedGroup.name} (Top ${Math.min(multiMonitorChartSeries.length, 10)} monitores)`
-                : `Comparativo - Top ${Math.min(multiMonitorChartSeries.length, 10)} monitores - ${period === '24h' ? 'Últimas 24 horas' : period === '48h' ? 'Últimas 48 horas' : period === '7d' ? 'Últimos 7 dias' : period === '14d' ? 'Últimos 14 dias' : 'Últimos 30 dias'}`}
-            />
-          ) : (
-            <div className="metric-card flex items-center justify-center h-[300px]">
-              <p className="text-muted-foreground">
-                Nenhum dado de leitura disponível ainda
-              </p>
-            </div>
-          )}
-
           {/* Monitor Status Cards */}
           {!comparisonMode && filteredMonitors.length > 0 && (
-            <div className="-mt-8">
+            <div>
               <div className="flex items-center justify-between mb-3">
                 <h2 className="text-lg font-semibold text-foreground">
                   Status dos Monitores
@@ -1083,6 +1057,32 @@ function DashboardContent() {
                   />
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Chart Section */}
+          {comparisonMode ? (
+            <MultiLineChart
+              series={comparisonChartSeries}
+              title={`Comparativo por ${comparisonGroupByMode === 'group' ? 'Grupo' : 'Tag'} - ${period === '24h' ? 'Últimas 24 horas' : period === '48h' ? 'Últimas 48 horas' : period === '7d' ? 'Últimos 7 dias' : period === '14d' ? 'Últimos 14 dias' : 'Últimos 30 dias'}`}
+            />
+          ) : selectedMonitorId && filteredChartData.length > 0 ? (
+            <ActiveAdsLineChart
+              data={filteredChartData}
+              title={`Anúncios Ativos - ${selectedMonitor?.name}`}
+            />
+          ) : multiMonitorChartSeries.length > 0 ? (
+            <MultiLineChart
+              series={multiMonitorChartSeries}
+              title={selectedGroup
+                ? `Comparativo - Grupo ${selectedGroup.name} (Top ${Math.min(multiMonitorChartSeries.length, 10)} monitores)`
+                : `Comparativo - Top ${Math.min(multiMonitorChartSeries.length, 10)} monitores - ${period === '24h' ? 'Últimas 24 horas' : period === '48h' ? 'Últimas 48 horas' : period === '7d' ? 'Últimos 7 dias' : period === '14d' ? 'Últimos 14 dias' : 'Últimos 30 dias'}`}
+            />
+          ) : (
+            <div className="metric-card flex items-center justify-center h-[300px]">
+              <p className="text-muted-foreground">
+                Nenhum dado de leitura disponível ainda
+              </p>
             </div>
           )}
 
