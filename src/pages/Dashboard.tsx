@@ -84,7 +84,8 @@ function DashboardContent() {
   const [chartData, setChartData] = useState<{ time: string; value: number }[]>([]);
   const [selectedMonitorId, setSelectedMonitorId] = useState<string | null>(null);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
-  const [period, setPeriod] = useState("24h");
+  const [period, setPeriod] = useState("7d");
+  const [customRange, setCustomRange] = useState<{ from: Date; to: Date } | null>(null);
   const [allReadingsRaw, setAllReadingsRaw] = useState<any[]>([]);
   
   // Comparison mode state
@@ -317,22 +318,51 @@ function DashboardContent() {
     });
   }, [monitors, selectedMonitorId, selectedGroupId]);
 
+  // Helper to get period bounds
+  const getPeriodBounds = (periodValue: string, customRangeValue: { from: Date; to: Date } | null) => {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    
+    if (periodValue === 'custom' && customRangeValue) {
+      const fromStart = new Date(customRangeValue.from);
+      fromStart.setHours(0, 0, 0, 0);
+      const toEnd = new Date(customRangeValue.to);
+      toEnd.setHours(23, 59, 59, 999);
+      return { start: fromStart.getTime(), end: toEnd.getTime() };
+    }
+    
+    switch (periodValue) {
+      case 'today':
+        return { start: todayStart.getTime(), end: now.getTime() };
+      case 'yesterday': {
+        const yesterdayStart = new Date(todayStart);
+        yesterdayStart.setDate(yesterdayStart.getDate() - 1);
+        return { start: yesterdayStart.getTime(), end: todayStart.getTime() - 1 };
+      }
+      case '3d':
+        return { start: now.getTime() - 3 * 24 * 60 * 60 * 1000, end: now.getTime() };
+      case '7d':
+        return { start: now.getTime() - 7 * 24 * 60 * 60 * 1000, end: now.getTime() };
+      case '14d':
+        return { start: now.getTime() - 14 * 24 * 60 * 60 * 1000, end: now.getTime() };
+      case '30d':
+        return { start: now.getTime() - 30 * 24 * 60 * 60 * 1000, end: now.getTime() };
+      case '60d':
+        return { start: now.getTime() - 60 * 24 * 60 * 60 * 1000, end: now.getTime() };
+      case '90d':
+        return { start: now.getTime() - 90 * 24 * 60 * 60 * 1000, end: now.getTime() };
+      default:
+        return { start: now.getTime() - 7 * 24 * 60 * 60 * 1000, end: now.getTime() };
+    }
+  };
+
   // Filter readings based on selection and period
   const filteredReadings = useMemo(() => {
-    const periodMs: Record<string, number> = {
-      '24h': 24 * 60 * 60 * 1000,
-      '48h': 48 * 60 * 60 * 1000,
-      '7d': 7 * 24 * 60 * 60 * 1000,
-      '14d': 14 * 24 * 60 * 60 * 1000,
-      '30d': 30 * 24 * 60 * 60 * 1000,
-    };
-
-    const now = Date.now();
-    const maxAge = periodMs[period] || periodMs['24h'];
+    const { start, end } = getPeriodBounds(period, customRange);
 
     let readings = allReadingsRaw.filter(r => {
-      const readingAge = now - new Date(r.timestamp).getTime();
-      return readingAge <= maxAge;
+      const readingTime = new Date(r.timestamp).getTime();
+      return readingTime >= start && readingTime <= end;
     });
 
     // Filter by monitor
@@ -349,14 +379,14 @@ function DashboardContent() {
     }
 
     return readings;
-  }, [allReadingsRaw, selectedMonitorId, selectedGroupId, monitors, period]);
+  }, [allReadingsRaw, selectedMonitorId, selectedGroupId, monitors, period, customRange]);
 
   // Calculate filtered chart data (for single monitor view only)
   const filteredChartData = useMemo(() => {
     // Only use aggregated chart when a single monitor is selected
     if (!selectedMonitorId) return [];
     
-    const isLongPeriod = period === '7d' || period === '14d' || period === '30d';
+    const isLongPeriod = ['7d', '14d', '30d', '60d', '90d', 'custom'].includes(period);
     const dataByKey: Record<string, number[]> = {};
 
     filteredReadings.forEach((r) => {
@@ -390,18 +420,11 @@ function DashboardContent() {
     // Only show multi-line when NOT a single monitor selected and there are monitors to show
     if (selectedMonitorId || filteredMonitors.length === 0) return [];
 
-    const periodMs: Record<string, number> = {
-      '24h': 24 * 60 * 60 * 1000,
-      '48h': 48 * 60 * 60 * 1000,
-      '7d': 7 * 24 * 60 * 60 * 1000,
-      '14d': 14 * 24 * 60 * 60 * 1000,
-      '30d': 30 * 24 * 60 * 60 * 1000,
-    };
-    const now = Date.now();
-    const maxAge = periodMs[period] || periodMs['24h'];
-    const isLongPeriod = period === '7d' || period === '14d' || period === '30d';
+    const { start, end } = getPeriodBounds(period, customRange);
+    const isLongPeriod = ['7d', '14d', '30d', '60d', '90d', 'custom'].includes(period);
 
     // Get top 10 monitors by ads active in last 7 days
+    const now = Date.now();
     const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
     const monitorAdsIn7d: Record<string, number> = {};
     
@@ -422,8 +445,8 @@ function DashboardContent() {
 
     // Filter readings by period
     const periodReadings = allReadingsRaw.filter(r => {
-      const age = now - new Date(r.timestamp).getTime();
-      return age <= maxAge;
+      const readingTime = new Date(r.timestamp).getTime();
+      return readingTime >= start && readingTime <= end;
     });
 
     return top10Monitors.map((monitor, index) => {
@@ -843,7 +866,12 @@ function DashboardContent() {
               </p>
             </div>
             <div className="flex items-center gap-3 flex-wrap">
-              <PeriodSelector value={period} onChange={setPeriod} />
+              <PeriodSelector 
+                value={period} 
+                onChange={setPeriod}
+                customRange={customRange}
+                onCustomRangeChange={setCustomRange}
+              />
               
               {/* Comparison Toggle Button */}
               <Button
