@@ -11,7 +11,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { Loader2, TrendingUp, TrendingDown, Minus, BarChart3 } from "lucide-react";
+import { Loader2, TrendingUp, TrendingDown, Minus, BarChart3, Clock } from "lucide-react";
 import { format, subDays, startOfDay, endOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
@@ -27,6 +27,10 @@ import {
 import { TagFilter } from "@/components/analytics/TagFilter";
 import { BenchmarkingMetrics } from "@/components/analytics/BenchmarkingMetrics";
 import { DistributionCharts } from "@/components/analytics/DistributionCharts";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Slider } from "@/components/ui/slider";
 
 interface Group {
   id: string;
@@ -62,6 +66,11 @@ interface ChartData {
   [key: string]: string | number;
 }
 
+interface HourRange {
+  start: number;
+  end: number;
+}
+
 function AnalisisContent() {
   const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
@@ -74,6 +83,8 @@ function AnalisisContent() {
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
   const [period, setPeriod] = useState<string>("7");
   const [chartData, setChartData] = useState<ChartData[]>([]);
+  const [hourRange, setHourRange] = useState<HourRange>({ start: 0, end: 23 });
+  const [hourFilterEnabled, setHourFilterEnabled] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -124,6 +135,21 @@ function AnalisisContent() {
     return filtered.map((m) => m.id);
   }, [monitors, selectedGroupId, selectedTagIds, monitorTags]);
 
+  // Filter readings by hour range
+  const filteredReadingsByHour = useMemo(() => {
+    if (!hourFilterEnabled) return readings;
+    
+    return readings.filter(r => {
+      const hour = new Date(r.timestamp).getHours();
+      if (hourRange.start <= hourRange.end) {
+        return hour >= hourRange.start && hour <= hourRange.end;
+      } else {
+        // Handle overnight ranges like 22:00 - 06:00
+        return hour >= hourRange.start || hour <= hourRange.end;
+      }
+    });
+  }, [readings, hourRange, hourFilterEnabled]);
+
   useEffect(() => {
     if (!user || monitors.length === 0) return;
 
@@ -148,12 +174,20 @@ function AnalisisContent() {
 
       if (data) {
         setReadings(data);
-        processChartData(data, filteredMonitorIds);
       }
     };
 
     fetchReadings();
   }, [user, monitors, filteredMonitorIds, period]);
+
+  // Process chart data when readings or hour filter changes
+  useEffect(() => {
+    if (filteredReadingsByHour.length > 0 && filteredMonitorIds.length > 0) {
+      processChartData(filteredReadingsByHour, filteredMonitorIds);
+    } else {
+      setChartData([]);
+    }
+  }, [filteredReadingsByHour, filteredMonitorIds]);
 
   const processChartData = (readingsData: Reading[], monitorIds: string[]) => {
     const days = parseInt(period);
@@ -188,12 +222,12 @@ function AnalisisContent() {
     setChartData(chartDataArr);
   };
 
-  // Calculate statistics for filtered monitors
+  // Calculate statistics for filtered monitors (using hour-filtered readings)
   const stats = useMemo(() => {
     const filteredMonitors = monitors.filter((m) => filteredMonitorIds.includes(m.id));
 
     return filteredMonitors.map((monitor) => {
-      const monitorReadings = readings.filter((r) => r.monitor_id === monitor.id);
+      const monitorReadings = filteredReadingsByHour.filter((r) => r.monitor_id === monitor.id);
       if (monitorReadings.length === 0) return { monitor, current: 0, change: 0, trend: "neutral" as const };
 
       const current = monitorReadings[monitorReadings.length - 1]?.ads_active_count || 0;
@@ -203,7 +237,9 @@ function AnalisisContent() {
 
       return { monitor, current, change, trend: trend as "up" | "down" | "neutral" };
     });
-  }, [monitors, filteredMonitorIds, readings]);
+  }, [monitors, filteredMonitorIds, filteredReadingsByHour]);
+
+  const formatHour = (hour: number) => `${hour.toString().padStart(2, '0')}:00`;
 
   // Calculate benchmarking metrics
   const benchmarkingData = useMemo(() => {
@@ -380,6 +416,104 @@ function AnalisisContent() {
                 <SelectItem value="180">Últimos 180 dias</SelectItem>
               </SelectContent>
             </Select>
+
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button 
+                  variant={hourFilterEnabled ? "default" : "outline"} 
+                  className="gap-2"
+                >
+                  <Clock className="h-4 w-4" />
+                  {hourFilterEnabled 
+                    ? `${formatHour(hourRange.start)} - ${formatHour(hourRange.end)}`
+                    : "Horário"
+                  }
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-80" align="start">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-medium">Filtrar por horário</Label>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setHourFilterEnabled(!hourFilterEnabled);
+                        if (!hourFilterEnabled) {
+                          setHourRange({ start: 0, end: 23 });
+                        }
+                      }}
+                    >
+                      {hourFilterEnabled ? "Desativar" : "Ativar"}
+                    </Button>
+                  </div>
+                  
+                  {hourFilterEnabled && (
+                    <>
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-sm text-muted-foreground">
+                          <span>Início: {formatHour(hourRange.start)}</span>
+                          <span>Fim: {formatHour(hourRange.end)}</span>
+                        </div>
+                        <div className="space-y-4">
+                          <div className="space-y-2">
+                            <Label className="text-xs">Hora inicial</Label>
+                            <Slider
+                              value={[hourRange.start]}
+                              onValueChange={([value]) => setHourRange(prev => ({ ...prev, start: value }))}
+                              max={23}
+                              min={0}
+                              step={1}
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label className="text-xs">Hora final</Label>
+                            <Slider
+                              value={[hourRange.end]}
+                              onValueChange={([value]) => setHourRange(prev => ({ ...prev, end: value }))}
+                              max={23}
+                              min={0}
+                              step={1}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="flex flex-wrap gap-2">
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => setHourRange({ start: 6, end: 12 })}
+                        >
+                          Manhã (6-12h)
+                        </Button>
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => setHourRange({ start: 12, end: 18 })}
+                        >
+                          Tarde (12-18h)
+                        </Button>
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => setHourRange({ start: 18, end: 23 })}
+                        >
+                          Noite (18-23h)
+                        </Button>
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => setHourRange({ start: 9, end: 18 })}
+                        >
+                          Comercial (9-18h)
+                        </Button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </PopoverContent>
+            </Popover>
           </div>
         </div>
 
