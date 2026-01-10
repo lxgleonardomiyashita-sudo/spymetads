@@ -142,20 +142,20 @@ function DashboardContent() {
 
         const monitorIds = monitorsData?.map(m => m.id) || [];
 
-        // Fetch readings from last 30 days for historical data
+        // Fetch readings from last 90 days for historical data
         let readingsMap: Record<string, any> = {};
         let allReadings: any[] = [];
         let readings24hAgoMap: Record<string, number> = {};
 
         if (monitorIds.length > 0) {
-          const thirtyDaysAgo = new Date();
-          thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+          const ninetyDaysAgo = new Date();
+          ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
 
           const { data: readingsData } = await supabase
             .from('readings')
             .select('*')
             .in('monitor_id', monitorIds)
-            .gte('timestamp', thirtyDaysAgo.toISOString())
+            .gte('timestamp', ninetyDaysAgo.toISOString())
             .order('timestamp', { ascending: false });
 
           if (readingsData) {
@@ -386,7 +386,7 @@ function DashboardContent() {
     // Only use aggregated chart when a single monitor is selected
     if (!selectedMonitorId) return [];
     
-    const isLongPeriod = ['7d', '14d', '30d', '60d', '90d', 'custom'].includes(period);
+    const isLongPeriod = ['3d', '7d', '14d', '30d', '60d', '90d', 'custom'].includes(period);
     const dataByKey: Record<string, number[]> = {};
 
     filteredReadings.forEach((r) => {
@@ -421,7 +421,7 @@ function DashboardContent() {
     if (selectedMonitorId || filteredMonitors.length === 0) return [];
 
     const { start, end } = getPeriodBounds(period, customRange);
-    const isLongPeriod = ['7d', '14d', '30d', '60d', '90d', 'custom'].includes(period);
+    const isLongPeriod = ['3d', '7d', '14d', '30d', '60d', '90d', 'custom'].includes(period);
 
     // Get top 10 monitors by ads active in last 7 days
     const now = Date.now();
@@ -484,7 +484,7 @@ function DashboardContent() {
         data,
       };
     });
-  }, [selectedMonitorId, filteredMonitors, allReadingsRaw, period]);
+  }, [selectedMonitorId, filteredMonitors, allReadingsRaw, period, customRange]);
 
   // Get filtered stats
   const filteredStats = useMemo(() => ({
