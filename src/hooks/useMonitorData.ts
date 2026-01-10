@@ -169,6 +169,10 @@ export function useMonitorData(options: UseMonitorDataOptions = {}) {
   }, [toast]);
 
   const scrapeMonitor = useCallback(async (monitorId: string, url: string, name: string) => {
+    // Capture previous value before scraping
+    const previousMonitor = monitors.find(m => m.id === monitorId);
+    const previousCount = previousMonitor?.latest_reading?.ads_active_count ?? null;
+
     setScrapingMonitors(prev => new Set(prev).add(monitorId));
 
     try {
@@ -179,11 +183,34 @@ export function useMonitorData(options: UseMonitorDataOptions = {}) {
       if (error) throw error;
 
       if (data.success) {
+        const newCount = data.ads_count;
+        const variation = previousCount !== null ? newCount - previousCount : null;
+        const variationPercent = previousCount !== null && previousCount > 0 
+          ? ((variation! / previousCount) * 100).toFixed(1)
+          : null;
+
+        // Build comparison message
+        let comparisonMessage = `${newCount.toLocaleString('pt-BR')} anúncios ativos`;
+        
+        if (variation !== null && variation !== 0) {
+          const arrow = variation > 0 ? '↑' : '↓';
+          const sign = variation > 0 ? '+' : '';
+          comparisonMessage = `${previousCount?.toLocaleString('pt-BR')} → ${newCount.toLocaleString('pt-BR')} (${sign}${variation} ${arrow} ${variationPercent}%)`;
+        } else if (variation === 0) {
+          comparisonMessage = `${newCount.toLocaleString('pt-BR')} anúncios (sem alteração)`;
+        }
+
         toast({
-          title: "Coleta realizada!",
-          description: `${name}: ${data.ads_count.toLocaleString('pt-BR')} anúncios ativos`,
+          title: variation !== null && variation !== 0 
+            ? (variation > 0 ? "📈 Aumento detectado!" : "📉 Redução detectada!")
+            : "✅ Coleta realizada!",
+          description: `${name}: ${comparisonMessage}`,
+          variant: variation !== null && Math.abs(variation) > (previousCount || 1) * 0.2 
+            ? "default" 
+            : "default",
         });
-        fetchMonitors();
+        
+        await fetchMonitors();
       } else {
         toast({
           title: "Coleta com problemas",
@@ -204,7 +231,7 @@ export function useMonitorData(options: UseMonitorDataOptions = {}) {
         return next;
       });
     }
-  }, [toast, fetchMonitors]);
+  }, [toast, fetchMonitors, monitors]);
 
   const removeTagFromMonitor = useCallback(async (monitorId: string, tagId: string) => {
     try {
