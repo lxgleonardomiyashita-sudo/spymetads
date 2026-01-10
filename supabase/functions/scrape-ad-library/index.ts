@@ -189,17 +189,32 @@ serve(async (req) => {
       formattedUrl = `https://${formattedUrl}`;
     }
 
+    // Add cache-busting timestamp to URL to ensure fresh data
+    const cacheBuster = Date.now();
+    const urlWithCacheBuster = formattedUrl.includes('?') 
+      ? `${formattedUrl}&_cb=${cacheBuster}` 
+      : `${formattedUrl}?_cb=${cacheBuster}`;
+
+    console.log(`Scraping with cache-busting URL: ${urlWithCacheBuster}`);
+
     const scrapeResponse = await fetch('https://api.firecrawl.dev/v1/scrape', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${firecrawlApiKey}`,
         'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
       },
       body: JSON.stringify({
-        url: formattedUrl,
+        url: urlWithCacheBuster,
         formats: ['markdown', 'html'],
         onlyMainContent: false,
-        waitFor: 5000,
+        waitFor: 8000,
+        skipCache: true,
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+        },
       }),
     });
 
