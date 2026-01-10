@@ -202,19 +202,12 @@ serve(async (req) => {
       headers: {
         'Authorization': `Bearer ${firecrawlApiKey}`,
         'Content-Type': 'application/json',
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-        'Pragma': 'no-cache',
       },
       body: JSON.stringify({
         url: urlWithCacheBuster,
         formats: ['markdown', 'html'],
         onlyMainContent: false,
         waitFor: 8000,
-        skipCache: true,
-        headers: {
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache',
-        },
       }),
     });
 
