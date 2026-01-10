@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
+import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
@@ -11,7 +12,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Save, User, Bell, Clock, Shield } from "lucide-react";
 
-export default function Configuracoes() {
+function ConfiguracoesContent() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
@@ -278,5 +279,13 @@ export default function Configuracoes() {
         </div>
       </div>
     </AppLayout>
+  );
+}
+
+export default function Configuracoes() {
+  return (
+    <ProtectedRoute>
+      <ConfiguracoesContent />
+    </ProtectedRoute>
   );
 }
