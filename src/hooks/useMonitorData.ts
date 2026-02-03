@@ -185,6 +185,49 @@ export function useMonitorData(options: UseMonitorDataOptions = {}) {
     }
   }, [toast]);
 
+  const scrapeMultipleMonitors = useCallback(async (monitorIds: string[]) => {
+    const monitorsToScrape = monitors.filter((m) => monitorIds.includes(m.id));
+    
+    // Add all to scraping set
+    setScrapingMonitors(prev => {
+      const next = new Set(prev);
+      monitorIds.forEach(id => next.add(id));
+      return next;
+    });
+
+    // Process all in parallel
+    await Promise.all(
+      monitorsToScrape.map(async (monitor) => {
+        try {
+          const { data, error } = await supabase.functions.invoke('scrape-ad-library', {
+            body: { monitor_id: monitor.id, url: monitor.ad_library_url },
+          });
+
+          if (error) {
+            console.error(`Error scraping ${monitor.name}:`, error.message);
+          }
+        } catch (error: any) {
+          console.error(`Error scraping ${monitor.name}:`, error.message);
+        }
+      })
+    );
+
+    // Remove all from scraping set
+    setScrapingMonitors(prev => {
+      const next = new Set(prev);
+      monitorIds.forEach(id => next.delete(id));
+      return next;
+    });
+
+    // Refresh data
+    await fetchMonitors();
+    
+    toast({
+      title: "Atualização concluída",
+      description: `${monitorsToScrape.length} monitores atualizados`,
+    });
+  }, [monitors, toast, fetchMonitors]);
+
   const scrapeMonitor = useCallback(async (monitorId: string, url: string, name: string) => {
     // Capture previous value before scraping
     const previousMonitor = monitors.find(m => m.id === monitorId);
@@ -298,6 +341,7 @@ export function useMonitorData(options: UseMonitorDataOptions = {}) {
     toggleMonitorStatus,
     deleteMonitor,
     scrapeMonitor,
+    scrapeMultipleMonitors,
     removeTagFromMonitor,
   };
 }
