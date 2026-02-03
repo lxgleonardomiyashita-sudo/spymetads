@@ -7,6 +7,7 @@ import { ManageTagsDialog } from "@/components/monitors/ManageTagsDialog";
 import { EditMonitorDialog } from "@/components/monitors/EditMonitorDialog";
 import { MonitorInsightsDialog } from "@/components/monitors/MonitorInsightsDialog";
 import { MonitorCard } from "@/components/monitors/MonitorCard";
+import { BulkScrapeActions } from "@/components/monitors/BulkScrapeActions";
 import { Plus, Search, Radio, Loader2 } from "lucide-react";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { useMonitorData } from "@/hooks/useMonitorData";
@@ -35,6 +36,7 @@ function MonitoresContent() {
     toggleMonitorStatus,
     deleteMonitor,
     scrapeMonitor,
+    scrapeMultipleMonitors,
   } = useMonitorData();
 
   const { isSaved, toggleSave } = useSavedMonitors();
@@ -83,13 +85,21 @@ function MonitoresContent() {
               Gerencie seus monitores de anúncios
             </p>
           </div>
-          <Button
-            className="bg-primary text-primary-foreground hover:bg-primary/90 glow-hover"
-            onClick={() => setDialogOpen(true)}
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Novo Monitor
-          </Button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <BulkScrapeActions
+              monitors={monitors}
+              tags={tags}
+              scrapingMonitors={scrapingMonitors}
+              onScrapeMonitors={scrapeMultipleMonitors}
+            />
+            <Button
+              className="bg-primary text-primary-foreground hover:bg-primary/90 glow-hover"
+              onClick={() => setDialogOpen(true)}
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Novo Monitor
+            </Button>
+          </div>
         </div>
 
         {/* Search */}
