@@ -57,17 +57,22 @@ export function useMonitorData(options: UseMonitorDataOptions = {}) {
 
         if (readingsData) {
           readingsData.forEach((reading) => {
+            // Prefer the latest *ok* reading for display; fall back to latest reading if none are ok
             if (!readingsMap[reading.monitor_id]) {
               readingsMap[reading.monitor_id] = reading;
+            } else if (readingsMap[reading.monitor_id]?.status !== 'ok' && reading.status === 'ok') {
+              readingsMap[reading.monitor_id] = reading;
             }
-            
-            // Calculate stats
+
+            // Calculate stats only from ok readings (avoid skew from "suspect" fallbacks)
             if (!statsMap[reading.monitor_id]) {
               statsMap[reading.monitor_id] = { max_ads: 0, total_readings: 0 };
             }
-            statsMap[reading.monitor_id].total_readings++;
-            if (reading.ads_active_count > statsMap[reading.monitor_id].max_ads) {
-              statsMap[reading.monitor_id].max_ads = reading.ads_active_count;
+            if (reading.status === 'ok') {
+              statsMap[reading.monitor_id].total_readings++;
+              if (reading.ads_active_count > statsMap[reading.monitor_id].max_ads) {
+                statsMap[reading.monitor_id].max_ads = reading.ads_active_count;
+              }
             }
           });
         }

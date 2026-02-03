@@ -244,6 +244,23 @@ serve(async (req) => {
     let adsCount = 0;
     let foundMatch = false;
 
+    // Strong signal for 0 ads (override any numeric noise in the page)
+    const zeroPatterns = [
+      /\bno\s+results\b/i,
+      /\bnenhum\s+resultado\b/i,
+      /\bnenhum\s+an[úu]ncio\b/i,
+      /\bn[ãa]o\s+h[áa]\s+an[úu]ncios\b/i,
+      /\b0\s*(?:results?|resultados?|ads?|an[úu]ncios?)\b/i,
+      /\bno\s+ads\b/i,
+    ];
+
+    const zeroDetected = zeroPatterns.some((p) => p.test(content));
+    if (zeroDetected) {
+      adsCount = 0;
+      foundMatch = true;
+      console.log('Detected zero ads message in page content');
+    }
+
     const patterns = [
       /(\d{1,3}(?:[.,]\d{3})*)\s*(?:results?|resultados?)/i,
       /(?:about|cerca de|approximately|aprox\.?)\s*(\d{1,3}(?:[.,]\d{3})*)\s*(?:ads?|anúncios?)/i,
@@ -252,48 +269,39 @@ serve(async (req) => {
       /(?:showing|mostrando)\s*\d+\s*(?:of|de)\s*(\d{1,3}(?:[.,]\d{3})*)/i,
     ];
 
-    for (const pattern of patterns) {
-      const match = content.match(pattern);
-      if (match) {
-        adsCount = parseInt(match[1].replace(/[.,]/g, ''), 10);
-        foundMatch = true;
-        console.log(`Found via pattern: ${adsCount}`);
-        break;
-      }
-    }
-
-    if (!foundMatch) {
-      const allNumbers = content.match(/\d{1,3}(?:[.,]\d{3})+|\d{4,}/g);
-      if (allNumbers) {
-        for (const numStr of allNumbers) {
-          const num = parseInt(numStr.replace(/[.,]/g, ''), 10);
-          if (num >= 1 && num <= 10000000) {
-            adsCount = num;
-            foundMatch = true;
-            console.log('Found via fallback:', adsCount);
-            break;
-          }
+    // Only try numeric extraction if we did NOT already detect explicit 0-ads messaging
+    if (!zeroDetected) {
+      for (const pattern of patterns) {
+        const match = content.match(pattern);
+        if (match) {
+          adsCount = parseInt(match[1].replace(/[.,]/g, ''), 10);
+          foundMatch = true;
+          console.log(`Found via pattern: ${adsCount}`);
+          break;
         }
       }
     }
 
-    // If still no match found, default to 0 (empty/no ads)
+    // If still no match found, default to 0 (avoid false positives from IDs / page params)
     if (!foundMatch) {
-      console.log(`No ads count found for monitor ${monitor_id}, defaulting to 0`);
+      console.log(`No confident ads count found for monitor ${monitor_id}, defaulting to 0`);
       adsCount = 0;
     }
 
     console.log(`Final ads count for monitor ${monitor_id}: ${adsCount}, found: ${foundMatch}`);
 
-    // Insert reading - always save with status 'ok' even if 0 (it means no ads found)
+    // Insert reading
+    // status:
+    // - ok: confidently extracted OR explicit "0 ads" detected
+    // - suspect: defaulted to 0 due to inability to confidently extract
     const { data: readingData, error: insertError } = await supabase
       .from('readings')
       .insert({
         monitor_id,
         ads_active_count: adsCount,
         source_method: 'public_parse',
-        status: 'ok',
-        error_message: null,
+        status: foundMatch ? 'ok' : 'suspect',
+        error_message: foundMatch ? null : 'Could not confidently extract ads count; defaulted to 0',
       })
       .select('id')
       .single();
