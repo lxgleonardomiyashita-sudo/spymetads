@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import {
   Select,
   SelectContent,
@@ -6,32 +7,20 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
-type TestStatus = 'backup_para_teste' | 'fazendo_ads' | 'configuracao' | 'pronto' | 'em_teste' | 'validado' | 'nova_leva' | 'descartado' | null;
-
-interface TestStatusOption {
-  value: TestStatus;
-  label: string;
+interface KanbanColumn {
+  id: string;
+  name: string;
   color: string;
+  position: number;
 }
-
-const STATUS_OPTIONS: TestStatusOption[] = [
-  { value: null, label: 'Sem status', color: 'hsl(var(--muted-foreground))' },
-  { value: 'backup_para_teste', label: 'Backup Para Teste', color: 'hsl(var(--muted))' },
-  { value: 'fazendo_ads', label: 'Fazendo Ads', color: 'hsl(217, 91%, 60%)' },
-  { value: 'configuracao', label: 'Configuração', color: 'hsl(45, 93%, 47%)' },
-  { value: 'pronto', label: 'Pronto', color: 'hsl(280, 87%, 65%)' },
-  { value: 'em_teste', label: 'Em Teste', color: 'hsl(25, 95%, 53%)' },
-  { value: 'validado', label: 'Validado', color: 'hsl(142, 71%, 45%)' },
-  { value: 'nova_leva', label: 'Nova Leva', color: 'hsl(199, 89%, 48%)' },
-  { value: 'descartado', label: 'Descartado', color: 'hsl(0, 84%, 60%)' },
-];
 
 interface TestStatusSelectorProps {
   monitorId: string;
-  currentStatus: TestStatus;
+  currentStatus: string | null;
   onStatusChange?: () => void;
   compact?: boolean;
 }
@@ -42,10 +31,39 @@ export function TestStatusSelector({
   onStatusChange,
   compact = false,
 }: TestStatusSelectorProps) {
+  const { user } = useAuth();
   const { toast } = useToast();
+  const [columns, setColumns] = useState<KanbanColumn[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchColumns = async () => {
+      if (!user) return;
+      
+      try {
+        const { data, error } = await supabase
+          .from('kanban_columns')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('position');
+        
+        if (error) throw error;
+        
+        if (data && data.length > 0) {
+          setColumns(data);
+        }
+      } catch (error) {
+        console.error('Error fetching columns:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchColumns();
+  }, [user]);
 
   const handleStatusChange = async (value: string) => {
-    const newStatus = value === 'null' ? null : value as TestStatus;
+    const newStatus = value === 'null' ? null : value;
     
     try {
       const { error } = await supabase
@@ -55,7 +73,7 @@ export function TestStatusSelector({
       
       if (error) throw error;
       
-      const statusLabel = STATUS_OPTIONS.find(s => s.value === newStatus)?.label || 'Sem status';
+      const statusLabel = columns.find(c => c.id === newStatus)?.name || 'Sem status';
       
       toast({
         title: "Status atualizado",
@@ -63,7 +81,7 @@ export function TestStatusSelector({
       });
       
       onStatusChange?.();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating test status:', error);
       toast({
         title: "Erro ao atualizar status",
@@ -73,7 +91,15 @@ export function TestStatusSelector({
     }
   };
 
-  const currentOption = STATUS_OPTIONS.find(s => s.value === currentStatus) || STATUS_OPTIONS[0];
+  const currentColumn = columns.find(c => c.id === currentStatus);
+
+  if (isLoading) {
+    return (
+      <div className={cn("border border-dashed rounded-md flex items-center justify-center", compact ? "h-7" : "h-8")}>
+        <span className="text-xs text-muted-foreground">...</span>
+      </div>
+    );
+  }
 
   return (
     <Select
@@ -90,28 +116,36 @@ export function TestStatusSelector({
         <div className="flex items-center gap-1.5">
           <div
             className="w-2 h-2 rounded-full flex-shrink-0"
-            style={{ backgroundColor: currentOption.color }}
+            style={{ backgroundColor: currentColumn?.color || 'hsl(var(--muted-foreground))' }}
           />
           <SelectValue placeholder="Status">
-            {compact ? (currentOption.value ? currentOption.label.substring(0, 10) + '...' : 'Status') : currentOption.label}
+            {compact 
+              ? (currentColumn?.name ? currentColumn.name.substring(0, 12) + (currentColumn.name.length > 12 ? '...' : '') : 'Sem status') 
+              : (currentColumn?.name || 'Sem status')
+            }
           </SelectValue>
         </div>
       </SelectTrigger>
-      <SelectContent>
-        {STATUS_OPTIONS.map((option) => (
-          <SelectItem
-            key={option.value || 'null'}
-            value={option.value || 'null'}
-          >
-            <div className="flex items-center gap-2">
-              <div
-                className="w-2 h-2 rounded-full"
-                style={{ backgroundColor: option.color }}
-              />
-              {option.label}
-            </div>
-          </SelectItem>
-        ))}
+      <SelectContent className="bg-popover border-border z-50">
+        <SelectItem value="null">
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-muted-foreground" />
+            Sem status
+          </div>
+        </SelectItem>
+        {columns
+          .sort((a, b) => a.position - b.position)
+          .map((column) => (
+            <SelectItem key={column.id} value={column.id}>
+              <div className="flex items-center gap-2">
+                <div
+                  className="w-2 h-2 rounded-full"
+                  style={{ backgroundColor: column.color }}
+                />
+                {column.name}
+              </div>
+            </SelectItem>
+          ))}
       </SelectContent>
     </Select>
   );
