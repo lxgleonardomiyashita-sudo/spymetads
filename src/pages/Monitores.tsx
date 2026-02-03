@@ -110,6 +110,7 @@ function MonitoresContent() {
               key={monitor.id}
               monitor={monitor}
               groups={groups}
+              allTags={tags}
               isSaved={isSaved(monitor.id)}
               isScraping={scrapingMonitors.has(monitor.id)}
               onToggleSave={() => toggleSave(monitor.id)}
@@ -119,6 +120,10 @@ function MonitoresContent() {
               onToggleStatus={() => toggleMonitorStatus(monitor.id, monitor.is_active)}
               onScrape={() => scrapeMonitor(monitor.id, monitor.ad_library_url, monitor.name)}
               onManageTags={() => openTagsDialog(monitor)}
+              onTagsUpdated={() => {
+                fetchMonitors();
+                fetchTags();
+              }}
             />
           ))}
         </div>

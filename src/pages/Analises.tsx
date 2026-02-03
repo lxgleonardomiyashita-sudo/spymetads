@@ -27,6 +27,7 @@ import {
 import { TagFilter } from "@/components/analytics/TagFilter";
 import { BenchmarkingMetrics } from "@/components/analytics/BenchmarkingMetrics";
 import { DistributionCharts } from "@/components/analytics/DistributionCharts";
+import { QuickStatsBar } from "@/components/analytics/QuickStatsBar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -533,6 +534,15 @@ function AnalisisContent() {
           </div>
         ) : (
           <>
+            {/* Quick Stats Bar */}
+            <QuickStatsBar
+              totalAds={stats.reduce((sum, s) => sum + s.current, 0)}
+              totalMonitors={filteredMonitors.length}
+              avgAds={Math.round(stats.reduce((sum, s) => sum + s.current, 0) / stats.length)}
+              growthRate={benchmarkingData.growthRate}
+              concentration={benchmarkingData.concentration}
+            />
+
             {/* Stats Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {stats.map(({ monitor, current, change, trend }) => (
