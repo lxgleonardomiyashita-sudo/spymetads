@@ -3,65 +3,38 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Search, Loader2, GripVertical, ExternalLink, Globe, Tags as TagsIcon } from "lucide-react";
+import { Search, Loader2, GripVertical, ExternalLink, Globe, Tags as TagsIcon, Settings2 } from "lucide-react";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { useMonitorData } from "@/hooks/useMonitorData";
+import { useKanbanColumns } from "@/hooks/useKanbanColumns";
 import { TagChip } from "@/components/ui/tag-chip";
+import { KanbanCardDialog } from "@/components/kanban/KanbanCardDialog";
+import { ColumnManagerDialog } from "@/components/kanban/ColumnManagerDialog";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import type { Monitor } from "@/types/monitor";
 
-type TestStatus = 'backup_para_teste' | 'fazendo_ads' | 'configuracao' | 'pronto' | 'em_teste' | 'validado' | 'nova_leva' | 'descartado';
-
-interface KanbanColumn {
-  id: TestStatus;
-  title: string;
-  color: string;
-}
-
-const KANBAN_COLUMNS: KanbanColumn[] = [
-  { id: 'backup_para_teste', title: 'Backup Para Teste', color: 'hsl(var(--muted))' },
-  { id: 'fazendo_ads', title: 'Fazendo Ads', color: 'hsl(217, 91%, 60%)' },
-  { id: 'configuracao', title: 'Configuração', color: 'hsl(45, 93%, 47%)' },
-  { id: 'pronto', title: 'Pronto', color: 'hsl(280, 87%, 65%)' },
-  { id: 'em_teste', title: 'Em Teste', color: 'hsl(25, 95%, 53%)' },
-  { id: 'validado', title: 'Validado', color: 'hsl(142, 71%, 45%)' },
-  { id: 'nova_leva', title: 'Nova Leva', color: 'hsl(199, 89%, 48%)' },
-  { id: 'descartado', title: 'Descartado', color: 'hsl(0, 84%, 60%)' },
-];
-
 function KanbanCard({ 
   monitor, 
-  onDragStart 
+  onDragStart,
+  onClick,
 }: { 
   monitor: Monitor; 
   onDragStart: (e: React.DragEvent, monitorId: string) => void;
+  onClick: () => void;
 }) {
   return (
     <div
       draggable
       onDragStart={(e) => onDragStart(e, monitor.id)}
-      className="bg-card border border-border rounded-lg p-3 cursor-grab active:cursor-grabbing hover:border-primary/50 transition-colors group"
+      onClick={onClick}
+      className="bg-card border border-border rounded-lg p-3 cursor-pointer hover:border-primary/50 transition-colors group"
     >
       <div className="flex items-start gap-2">
-        <GripVertical className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity" />
+        <GripVertical className="h-4 w-4 text-muted-foreground flex-shrink-0 mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab" />
         <div className="flex-1 min-w-0">
           <h4 className="text-sm font-medium text-foreground truncate">{monitor.name}</h4>
-          
-          {/* Website URL */}
-          {monitor.website_url && (
-            <a
-              href={monitor.website_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1 text-xs text-primary hover:underline mt-1"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <Globe className="h-3 w-3" />
-              <span className="truncate">{monitor.website_url.replace('https://', '').replace('www.', '').substring(0, 25)}...</span>
-            </a>
-          )}
           
           {/* Ad count */}
           <div className="flex items-center justify-between mt-2">
@@ -71,20 +44,31 @@ function KanbanCard({
             <span className="text-[10px] text-muted-foreground">anúncios</span>
           </div>
           
-          {/* Tags */}
+          {/* Tags - ALL visible */}
           {monitor.tags.length > 0 && (
             <div className="flex flex-wrap gap-1 mt-2">
-              {monitor.tags.slice(0, 2).map((tag) => (
+              {monitor.tags.map((tag) => (
                 <TagChip key={tag.id} name={tag.name} type={tag.type} size="sm" />
               ))}
-              {monitor.tags.length > 2 && (
-                <span className="text-[10px] text-muted-foreground">+{monitor.tags.length - 2}</span>
-              )}
             </div>
           )}
           
           {/* Actions */}
           <div className="flex items-center gap-1 mt-2">
+            {monitor.website_url && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  window.open(monitor.website_url!, '_blank');
+                }}
+                title="Abrir Site"
+              >
+                <Globe className="h-3 w-3" />
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="icon"
@@ -110,12 +94,14 @@ function KanbanColumnComponent({
   onDragStart,
   onDragOver,
   onDrop,
+  onCardClick,
 }: {
-  column: KanbanColumn;
+  column: { id: string; name: string; color: string };
   monitors: Monitor[];
   onDragStart: (e: React.DragEvent, monitorId: string) => void;
   onDragOver: (e: React.DragEvent) => void;
-  onDrop: (e: React.DragEvent, columnId: TestStatus) => void;
+  onDrop: (e: React.DragEvent, columnId: string) => void;
+  onCardClick: (monitor: Monitor) => void;
 }) {
   return (
     <div
@@ -131,7 +117,7 @@ function KanbanColumnComponent({
               className="w-3 h-3 rounded-full"
               style={{ backgroundColor: column.color }}
             />
-            <h3 className="text-sm font-semibold text-foreground">{column.title}</h3>
+            <h3 className="text-sm font-semibold text-foreground">{column.name}</h3>
           </div>
           <Badge variant="secondary" className="text-xs">
             {monitors.length}
@@ -146,6 +132,7 @@ function KanbanColumnComponent({
             key={monitor.id}
             monitor={monitor}
             onDragStart={onDragStart}
+            onClick={() => onCardClick(monitor)}
           />
         ))}
         {monitors.length === 0 && (
@@ -161,14 +148,21 @@ function KanbanColumnComponent({
 function ParaTestarContent() {
   const [searchTerm, setSearchTerm] = useState("");
   const [draggedMonitorId, setDraggedMonitorId] = useState<string | null>(null);
-  const { monitors, isLoading, fetchMonitors } = useMonitorData();
+  const [selectedMonitor, setSelectedMonitor] = useState<Monitor | null>(null);
+  const [cardDialogOpen, setCardDialogOpen] = useState(false);
+  const [columnManagerOpen, setColumnManagerOpen] = useState(false);
+  
+  const { monitors, isLoading: monitorsLoading, fetchMonitors } = useMonitorData();
+  const { columns, isLoading: columnsLoading, refetch: refetchColumns } = useKanbanColumns();
   const { toast } = useToast();
 
-  // Filter only monitors with test_status set
-  const testingMonitors = useMemo(() => 
-    monitors.filter((m) => m.test_status !== null && m.test_status !== undefined),
-    [monitors]
-  );
+  const isLoading = monitorsLoading || columnsLoading;
+
+  // Filter only monitors with test_status set (matching any column ID)
+  const testingMonitors = useMemo(() => {
+    const columnIds = columns.map(c => c.id);
+    return monitors.filter((m) => m.test_status && columnIds.includes(m.test_status));
+  }, [monitors, columns]);
 
   const filteredMonitors = useMemo(() => 
     testingMonitors.filter(
@@ -182,25 +176,19 @@ function ParaTestarContent() {
   );
 
   const monitorsByColumn = useMemo(() => {
-    const result: Record<TestStatus, Monitor[]> = {
-      backup_para_teste: [],
-      fazendo_ads: [],
-      configuracao: [],
-      pronto: [],
-      em_teste: [],
-      validado: [],
-      nova_leva: [],
-      descartado: [],
-    };
+    const result: Record<string, Monitor[]> = {};
+    columns.forEach(col => {
+      result[col.id] = [];
+    });
     
     filteredMonitors.forEach((monitor) => {
-      if (monitor.test_status && result[monitor.test_status as TestStatus]) {
-        result[monitor.test_status as TestStatus].push(monitor);
+      if (monitor.test_status && result[monitor.test_status]) {
+        result[monitor.test_status].push(monitor);
       }
     });
     
     return result;
-  }, [filteredMonitors]);
+  }, [filteredMonitors, columns]);
 
   const handleDragStart = useCallback((e: React.DragEvent, monitorId: string) => {
     setDraggedMonitorId(monitorId);
@@ -212,7 +200,7 @@ function ParaTestarContent() {
     e.dataTransfer.dropEffect = 'move';
   }, []);
 
-  const handleDrop = useCallback(async (e: React.DragEvent, columnId: TestStatus) => {
+  const handleDrop = useCallback(async (e: React.DragEvent, columnId: string) => {
     e.preventDefault();
     
     if (!draggedMonitorId) return;
@@ -222,6 +210,8 @@ function ParaTestarContent() {
       setDraggedMonitorId(null);
       return;
     }
+    
+    const targetColumn = columns.find(c => c.id === columnId);
     
     try {
       const { error } = await supabase
@@ -233,7 +223,7 @@ function ParaTestarContent() {
       
       toast({
         title: "Status atualizado",
-        description: `${monitor.name} movido para ${KANBAN_COLUMNS.find(c => c.id === columnId)?.title}`,
+        description: `${monitor.name} movido para ${targetColumn?.name || 'coluna'}`,
       });
       
       fetchMonitors();
@@ -247,7 +237,12 @@ function ParaTestarContent() {
     }
     
     setDraggedMonitorId(null);
-  }, [draggedMonitorId, monitors, fetchMonitors, toast]);
+  }, [draggedMonitorId, monitors, columns, fetchMonitors, toast]);
+
+  const handleCardClick = useCallback((monitor: Monitor) => {
+    setSelectedMonitor(monitor);
+    setCardDialogOpen(true);
+  }, []);
 
   if (isLoading) {
     return (
@@ -271,6 +266,14 @@ function ParaTestarContent() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setColumnManagerOpen(true)}
+            >
+              <Settings2 className="h-4 w-4 mr-2" />
+              Gerenciar Colunas
+            </Button>
             <Badge variant="outline" className="text-xs">
               <TagsIcon className="h-3 w-3 mr-1" />
               {testingMonitors.length} monitores em teste
@@ -297,28 +300,50 @@ function ParaTestarContent() {
               Nenhum monitor para testar
             </h3>
             <p className="text-muted-foreground mt-1 max-w-md mx-auto">
-              Para adicionar um monitor aqui, vá até a página de Monitores e altere o status de um card para "Para Testar".
+              Para adicionar um monitor aqui, vá até a página de Monitores e altere o status de um card para uma das colunas do Kanban.
             </p>
           </div>
         )}
 
         {/* Kanban Board */}
-        {testingMonitors.length > 0 && (
+        {columns.length > 0 && (
           <div className="overflow-x-auto pb-4">
             <div className="flex gap-4 min-w-max">
-              {KANBAN_COLUMNS.map((column) => (
-                <KanbanColumnComponent
-                  key={column.id}
-                  column={column}
-                  monitors={monitorsByColumn[column.id]}
-                  onDragStart={handleDragStart}
-                  onDragOver={handleDragOver}
-                  onDrop={handleDrop}
-                />
-              ))}
+              {columns
+                .sort((a, b) => a.position - b.position)
+                .map((column) => (
+                  <KanbanColumnComponent
+                    key={column.id}
+                    column={column}
+                    monitors={monitorsByColumn[column.id] || []}
+                    onDragStart={handleDragStart}
+                    onDragOver={handleDragOver}
+                    onDrop={handleDrop}
+                    onCardClick={handleCardClick}
+                  />
+                ))}
             </div>
           </div>
         )}
+
+        {/* Card Dialog */}
+        <KanbanCardDialog
+          open={cardDialogOpen}
+          onOpenChange={setCardDialogOpen}
+          monitor={selectedMonitor}
+          onUpdate={() => {
+            fetchMonitors();
+            setCardDialogOpen(false);
+          }}
+        />
+
+        {/* Column Manager Dialog */}
+        <ColumnManagerDialog
+          open={columnManagerOpen}
+          onOpenChange={setColumnManagerOpen}
+          columns={columns}
+          onColumnsChange={refetchColumns}
+        />
       </div>
     </AppLayout>
   );
