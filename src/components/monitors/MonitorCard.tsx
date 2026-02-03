@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { TagChip } from "@/components/ui/tag-chip";
+import { QuickTagInput } from "./QuickTagInput";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -26,9 +27,16 @@ import { cn } from "@/lib/utils";
 import { formatTimestamp } from "@/lib/formatters";
 import type { Monitor, Group } from "@/types/monitor";
 
+interface Tag {
+  id: string;
+  name: string;
+  type: 'nicho' | 'idioma' | 'pais' | 'custom';
+}
+
 interface MonitorCardProps {
   monitor: Monitor;
   groups?: Group[];
+  allTags?: Tag[];
   isSaved: boolean;
   isScraping: boolean;
   onToggleSave: () => void;
@@ -38,12 +46,14 @@ interface MonitorCardProps {
   onToggleStatus?: () => void;
   onScrape?: () => void;
   onManageTags?: () => void;
+  onTagsUpdated?: () => void;
   showGroupBadge?: boolean;
 }
 
 export function MonitorCard({
   monitor,
   groups = [],
+  allTags = [],
   isSaved,
   isScraping,
   onToggleSave,
@@ -53,6 +63,7 @@ export function MonitorCard({
   onToggleStatus,
   onScrape,
   onManageTags,
+  onTagsUpdated,
   showGroupBadge = true,
 }: MonitorCardProps) {
   const group = groups.find((g) => g.id === monitor.group_id);
@@ -243,23 +254,35 @@ export function MonitorCard({
         )}
       </div>
 
-      {/* Tags */}
-      <div className="flex flex-wrap items-center gap-1.5 mt-2 min-h-[24px]">
-        {monitor.tags.map((tag) => (
-          <TagChip
-            key={tag.id}
-            name={tag.name}
-            type={tag.type}
-            size="sm"
+      {/* Tags - Quick Input */}
+      <div className="mt-2 min-h-[24px]">
+        {onTagsUpdated ? (
+          <QuickTagInput
+            monitorId={monitor.id}
+            currentTags={monitor.tags}
+            allTags={allTags}
+            onTagsUpdated={onTagsUpdated}
+            compact
           />
-        ))}
-        {onManageTags && (
-          <button
-            onClick={onManageTags}
-            className="text-xs text-muted-foreground hover:text-primary transition-colors ml-auto"
-          >
-            <Plus className="h-3 w-3" />
-          </button>
+        ) : (
+          <div className="flex flex-wrap items-center gap-1.5">
+            {monitor.tags.map((tag) => (
+              <TagChip
+                key={tag.id}
+                name={tag.name}
+                type={tag.type}
+                size="sm"
+              />
+            ))}
+            {onManageTags && (
+              <button
+                onClick={onManageTags}
+                className="text-xs text-muted-foreground hover:text-primary transition-colors ml-auto"
+              >
+                <Plus className="h-3 w-3" />
+              </button>
+            )}
+          </div>
         )}
       </div>
 
