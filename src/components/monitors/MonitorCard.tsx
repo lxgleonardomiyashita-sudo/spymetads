@@ -196,11 +196,22 @@ export function MonitorCard({
         </div>
       </div>
 
-      {/* Name + Group */}
+      {/* Name + URL Link */}
       <div className="mb-2">
         <h3 className="text-sm font-semibold text-foreground truncate" title={monitor.name}>
           {monitor.name}
         </h3>
+        {/* Direct clickable link to page */}
+        <a
+          href={monitor.ad_library_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs text-muted-foreground hover:text-primary transition-colors truncate block mt-0.5"
+          title={monitor.ad_library_url}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {monitor.ad_library_url.replace('https://', '').replace('www.', '').substring(0, 35)}...
+        </a>
         {showGroupBadge && group && (
           <span
             className="text-xs px-1.5 py-0.5 rounded-full inline-flex items-center gap-1 mt-1"
@@ -220,9 +231,16 @@ export function MonitorCard({
         <p className="text-3xl font-bold text-foreground text-center">
           {monitor.latest_reading
             ? monitor.latest_reading.ads_active_count.toLocaleString('pt-BR')
-            : '-'}
+            : '0'}
         </p>
         <p className="text-xs text-muted-foreground text-center">anúncios ativos</p>
+        
+        {/* Historical max ads */}
+        {monitor.stats && monitor.stats.max_ads > 0 && (
+          <p className="text-[10px] text-muted-foreground text-center mt-1">
+            Máx: {monitor.stats.max_ads.toLocaleString('pt-BR')} • {monitor.stats.total_readings} leituras
+          </p>
+        )}
       </div>
 
       {/* Tags */}

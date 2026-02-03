@@ -23,6 +23,11 @@ export interface ScheduleConfig {
   windows: string[];
 }
 
+export interface MonitorStats {
+  max_ads: number;
+  total_readings: number;
+}
+
 export interface Monitor {
   id: string;
   name: string;
@@ -34,6 +39,7 @@ export interface Monitor {
   created_at: string;
   tags: Tag[];
   latest_reading?: MonitorReading;
+  stats?: MonitorStats;
 }
 
 export interface SavedMonitor {

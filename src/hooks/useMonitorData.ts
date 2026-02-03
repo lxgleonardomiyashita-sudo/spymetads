@@ -45,8 +45,10 @@ export function useMonitorData(options: UseMonitorDataOptions = {}) {
 
       const monitorIds = monitorsData?.map(m => m.id) || [];
       let readingsMap: Record<string, any> = {};
+      let statsMap: Record<string, { max_ads: number; total_readings: number }> = {};
 
       if (monitorIds.length > 0) {
+        // Fetch latest readings
         const { data: readingsData } = await supabase
           .from('readings')
           .select('*')
@@ -57,6 +59,15 @@ export function useMonitorData(options: UseMonitorDataOptions = {}) {
           readingsData.forEach((reading) => {
             if (!readingsMap[reading.monitor_id]) {
               readingsMap[reading.monitor_id] = reading;
+            }
+            
+            // Calculate stats
+            if (!statsMap[reading.monitor_id]) {
+              statsMap[reading.monitor_id] = { max_ads: 0, total_readings: 0 };
+            }
+            statsMap[reading.monitor_id].total_readings++;
+            if (reading.ads_active_count > statsMap[reading.monitor_id].max_ads) {
+              statsMap[reading.monitor_id].max_ads = reading.ads_active_count;
             }
           });
         }
@@ -76,6 +87,7 @@ export function useMonitorData(options: UseMonitorDataOptions = {}) {
           timestamp: readingsMap[m.id].timestamp,
           status: readingsMap[m.id].status,
         } : undefined,
+        stats: statsMap[m.id] || { max_ads: 0, total_readings: 0 },
       }));
 
       setMonitors(transformedMonitors);
