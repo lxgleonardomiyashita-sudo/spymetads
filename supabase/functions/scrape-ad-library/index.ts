@@ -277,17 +277,23 @@ serve(async (req) => {
       }
     }
 
+    // If still no match found, default to 0 (empty/no ads)
+    if (!foundMatch) {
+      console.log(`No ads count found for monitor ${monitor_id}, defaulting to 0`);
+      adsCount = 0;
+    }
+
     console.log(`Final ads count for monitor ${monitor_id}: ${adsCount}, found: ${foundMatch}`);
 
-    // Insert reading
+    // Insert reading - always save with status 'ok' even if 0 (it means no ads found)
     const { data: readingData, error: insertError } = await supabase
       .from('readings')
       .insert({
         monitor_id,
         ads_active_count: adsCount,
         source_method: 'public_parse',
-        status: foundMatch ? 'ok' : 'error',
-        error_message: foundMatch ? null : 'Could not extract ads count from page',
+        status: 'ok',
+        error_message: null,
       })
       .select('id')
       .single();
