@@ -28,6 +28,8 @@ export interface MonitorStats {
   total_readings: number;
 }
 
+export type TestStatus = 'backup_para_teste' | 'fazendo_ads' | 'configuracao' | 'pronto' | 'em_teste' | 'validado' | 'nova_leva' | 'descartado' | null;
+
 export interface Monitor {
   id: string;
   name: string;
@@ -40,6 +42,8 @@ export interface Monitor {
   tags: Tag[];
   latest_reading?: MonitorReading;
   stats?: MonitorStats;
+  website_url?: string | null;
+  test_status?: TestStatus;
 }
 
 export interface SavedMonitor {

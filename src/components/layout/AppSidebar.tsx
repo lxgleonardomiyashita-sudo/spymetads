@@ -12,7 +12,8 @@ import {
   LogOut,
   Activity,
   Folder,
-  Star
+  Star,
+  FlaskConical
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -29,6 +30,7 @@ const navigation = [
   { name: "Monitores", href: "/monitores", icon: Radio },
   { name: "Grupos", href: "/grupos", icon: Folder },
   { name: "Spy Especial", href: "/spy-especial", icon: Star },
+  { name: "Para Testar", href: "/para-testar", icon: FlaskConical },
   { name: "Análises", href: "/analises", icon: BarChart3 },
   { name: "Tags", href: "/tags", icon: Tags },
   { name: "Alertas", href: "/alertas", icon: Bell },
