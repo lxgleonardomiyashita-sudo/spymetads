@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import type { Monitor, Tag, Group } from "@/types/monitor";
+import type { Monitor, Tag, Group, TestStatus } from "@/types/monitor";
 
 interface UseMonitorDataOptions {
   groupId?: string;
@@ -93,6 +93,8 @@ export function useMonitorData(options: UseMonitorDataOptions = {}) {
           status: readingsMap[m.id].status,
         } : undefined,
         stats: statsMap[m.id] || { max_ads: 0, total_readings: 0 },
+        website_url: m.website_url || null,
+        test_status: (m.test_status as TestStatus) || null,
       }));
 
       setMonitors(transformedMonitors);

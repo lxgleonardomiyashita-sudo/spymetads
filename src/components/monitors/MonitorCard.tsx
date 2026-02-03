@@ -1,6 +1,8 @@
 import { Button } from "@/components/ui/button";
 import { TagChip } from "@/components/ui/tag-chip";
 import { QuickTagInput } from "./QuickTagInput";
+import { TestStatusSelector } from "./TestStatusSelector";
+import { WebsiteUrlInput } from "./WebsiteUrlInput";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,13 +27,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatTimestamp } from "@/lib/formatters";
-import type { Monitor, Group } from "@/types/monitor";
-
-interface Tag {
-  id: string;
-  name: string;
-  type: 'nicho' | 'idioma' | 'pais' | 'custom';
-}
+import type { Monitor, Group, Tag, TestStatus } from "@/types/monitor";
 
 interface MonitorCardProps {
   monitor: Monitor;
@@ -207,7 +203,7 @@ export function MonitorCard({
         </div>
       </div>
 
-      {/* Name + URL Link */}
+      {/* Name + URL Link + Website */}
       <div className="mb-2">
         <h3 className="text-sm font-semibold text-foreground truncate" title={monitor.name}>
           {monitor.name}
@@ -223,6 +219,17 @@ export function MonitorCard({
         >
           {monitor.ad_library_url.replace('https://', '').replace('www.', '').substring(0, 35)}...
         </a>
+        
+        {/* Website URL - editable */}
+        <div className="mt-1">
+          <WebsiteUrlInput
+            monitorId={monitor.id}
+            currentUrl={monitor.website_url || null}
+            onUrlChange={onTagsUpdated}
+            compact
+          />
+        </div>
+        
         {showGroupBadge && group && (
           <span
             className="text-xs px-1.5 py-0.5 rounded-full inline-flex items-center gap-1 mt-1"
@@ -252,6 +259,16 @@ export function MonitorCard({
             Máx: {monitor.stats.max_ads.toLocaleString('pt-BR')} • {monitor.stats.total_readings} leituras
           </p>
         )}
+      </div>
+
+      {/* Test Status Selector */}
+      <div className="mt-2">
+        <TestStatusSelector
+          monitorId={monitor.id}
+          currentStatus={monitor.test_status || null}
+          onStatusChange={onTagsUpdated}
+          compact
+        />
       </div>
 
       {/* Tags - Quick Input */}

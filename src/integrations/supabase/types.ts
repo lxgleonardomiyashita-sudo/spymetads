@@ -148,9 +148,11 @@ export type Database = {
           is_active: boolean
           name: string
           schedule_config: Json
+          test_status: string | null
           timezone: string
           updated_at: string
           user_id: string
+          website_url: string | null
         }
         Insert: {
           ad_library_url: string
@@ -160,9 +162,11 @@ export type Database = {
           is_active?: boolean
           name: string
           schedule_config?: Json
+          test_status?: string | null
           timezone?: string
           updated_at?: string
           user_id: string
+          website_url?: string | null
         }
         Update: {
           ad_library_url?: string
@@ -172,9 +176,11 @@ export type Database = {
           is_active?: boolean
           name?: string
           schedule_config?: Json
+          test_status?: string | null
           timezone?: string
           updated_at?: string
           user_id?: string
+          website_url?: string | null
         }
         Relationships: [
           {
