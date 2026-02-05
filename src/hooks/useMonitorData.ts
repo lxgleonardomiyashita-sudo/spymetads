@@ -48,33 +48,65 @@ export function useMonitorData(options: UseMonitorDataOptions = {}) {
       let statsMap: Record<string, { max_ads: number; total_readings: number }> = {};
 
       if (monitorIds.length > 0) {
-        // Fetch latest readings
+        // Fetch latest reading per monitor (just the most recent one for display)
+        // We fetch a small batch per monitor to find the latest ok reading
         const { data: readingsData } = await supabase
           .from('readings')
           .select('*')
           .in('monitor_id', monitorIds)
-          .order('timestamp', { ascending: false });
+          .order('timestamp', { ascending: false })
+          .limit(monitorIds.length * 5); // ~5 readings per monitor is enough for latest
 
         if (readingsData) {
-          readingsData.forEach((reading) => {
-            // Prefer the latest *ok* reading for display; fall back to latest reading if none are ok
-            if (!readingsMap[reading.monitor_id]) {
-              readingsMap[reading.monitor_id] = reading;
-            } else if (readingsMap[reading.monitor_id]?.status !== 'ok' && reading.status === 'ok') {
-              readingsMap[reading.monitor_id] = reading;
-            }
+          const latestMap: Record<string, any> = {}; // Absolute latest reading (any status)
+          const latestOkMap: Record<string, any> = {}; // Latest "ok" reading
 
-            // Calculate stats only from ok readings (avoid skew from "suspect" fallbacks)
-            if (!statsMap[reading.monitor_id]) {
-              statsMap[reading.monitor_id] = { max_ads: 0, total_readings: 0 };
+          readingsData.forEach((reading) => {
+            // Track absolute latest reading per monitor
+            if (!latestMap[reading.monitor_id]) {
+              latestMap[reading.monitor_id] = reading;
             }
-            if (reading.status === 'ok') {
-              statsMap[reading.monitor_id].total_readings++;
-              if (reading.ads_active_count > statsMap[reading.monitor_id].max_ads) {
-                statsMap[reading.monitor_id].max_ads = reading.ads_active_count;
-              }
+            // Track latest "ok" reading per monitor
+            if (reading.status === 'ok' && !latestOkMap[reading.monitor_id]) {
+              latestOkMap[reading.monitor_id] = reading;
             }
           });
+
+          // For display: use latest ok reading, but if it's older than latest reading
+          // and latest reading is suspect/error, still prefer the latest to show current state
+          for (const monitorId of monitorIds) {
+            const latest = latestMap[monitorId];
+            const latestOk = latestOkMap[monitorId];
+
+            if (!latest) continue;
+
+            // Always show the most recent reading for display
+            // This ensures monitors with 0 ads NOW don't show old high numbers
+            readingsMap[monitorId] = latest;
+          }
+        }
+
+        // Fetch stats using a separate, targeted query per monitor
+        // Uses RPC-style aggregation to avoid the 1000 row limit issue
+        for (const monitorId of monitorIds) {
+          const { data: statsData } = await supabase
+            .from('readings')
+            .select('ads_active_count')
+            .eq('monitor_id', monitorId)
+            .eq('status', 'ok')
+            .order('ads_active_count', { ascending: false })
+            .limit(1);
+
+          const { count } = await supabase
+            .from('readings')
+            .select('*', { count: 'exact', head: true })
+            .eq('monitor_id', monitorId)
+            .eq('status', 'ok');
+
+          statsMap[monitorId] = {
+            max_ads: statsData?.[0]?.ads_active_count || 0,
+            total_readings: count || 0,
+          };
         }
       }
 
