@@ -34,7 +34,7 @@ interface NewMonitorDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess?: () => void;
-  existingTags: Array<{ id: string; name: string; type: 'nicho' | 'idioma' | 'pais' | 'custom' }>;
+  existingTags: Array<{ id: string; name: string; type: string; color?: string | null }>;
   existingGroups: Group[];
   defaultGroupId?: string;
 }
@@ -85,7 +85,7 @@ export function NewMonitorDialog({ open, onOpenChange, onSuccess, existingTags, 
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(defaultGroupId || null);
   const [newTagName, setNewTagName] = useState("");
-  const [newTagType, setNewTagType] = useState<'nicho' | 'idioma' | 'pais' | 'custom'>('nicho');
+  const [newTagType, setNewTagType] = useState<string>('nicho');
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState<{ name?: string; url?: string }>({});
 
@@ -415,7 +415,7 @@ export function NewMonitorDialog({ open, onOpenChange, onSuccess, existingTags, 
                     onClick={() => toggleTag(tag.id)}
                     className={`transition-all ${selectedTags.includes(tag.id) ? 'ring-2 ring-primary ring-offset-2 ring-offset-card rounded-full' : ''}`}
                   >
-                    <TagChip name={tag.name} type={tag.type} />
+                    <TagChip name={tag.name} type={tag.type as any} color={tag.color} />
                   </button>
                 ))}
               </div>
@@ -428,15 +428,17 @@ export function NewMonitorDialog({ open, onOpenChange, onSuccess, existingTags, 
                 onChange={(e) => setNewTagName(e.target.value)}
                 className="bg-muted border-border flex-1"
               />
-              <Select value={newTagType} onValueChange={(v: any) => setNewTagType(v)}>
-                <SelectTrigger className="w-32 bg-muted border-border">
+              <Select value={newTagType} onValueChange={(v: string) => setNewTagType(v)}>
+                <SelectTrigger className="w-36 bg-muted border-border">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="nicho">Nicho</SelectItem>
                   <SelectItem value="idioma">Idioma</SelectItem>
                   <SelectItem value="pais">País</SelectItem>
-                  <SelectItem value="custom">Custom</SelectItem>
+                  <SelectItem value="modelo_funil">Modelo de Funil</SelectItem>
+                  <SelectItem value="faixa_preco">Faixa de Preço</SelectItem>
+                  <SelectItem value="custom">Personalizado</SelectItem>
                 </SelectContent>
               </Select>
               <Button

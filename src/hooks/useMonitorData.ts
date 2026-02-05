@@ -29,7 +29,7 @@ export function useMonitorData(options: UseMonitorDataOptions = {}) {
           *,
           monitor_tags (
             tag_id,
-            tags (id, name, type)
+            tags (id, name, type, color)
           )
         `)
         .eq('user_id', user.id)

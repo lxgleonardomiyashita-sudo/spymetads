@@ -6,6 +6,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TagChip } from "@/components/ui/tag-chip";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
+import { TAG_TYPE_CONFIG, TAG_TYPES, PRESET_TAG_COLORS, getTagColor } from "@/lib/tag-constants";
+import type { TagType } from "@/types/monitor";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { 
   Plus, 
@@ -66,7 +68,8 @@ import {
 interface Tag {
   id: string;
   name: string;
-  type: 'nicho' | 'idioma' | 'pais' | 'custom';
+  type: string;
+  color?: string | null;
   monitorsCount: number;
 }
 
@@ -91,10 +94,12 @@ interface Monitor {
   };
 }
 
-const typeLabels = {
+const typeLabels: Record<string, string> = {
   nicho: 'Nicho',
   idioma: 'Idioma',
   pais: 'País',
+  modelo_funil: 'Modelo de Funil',
+  faixa_preco: 'Faixa de Preço',
   custom: 'Personalizado',
 };
 
@@ -115,7 +120,13 @@ function TagsContent() {
   const [isLoading, setIsLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [newTagName, setNewTagName] = useState("");
-  const [newTagType, setNewTagType] = useState<'nicho' | 'idioma' | 'pais' | 'custom'>('nicho');
+  const [newTagType, setNewTagType] = useState<TagType>('nicho');
+  const [newTagColor, setNewTagColor] = useState<string>(TAG_TYPE_CONFIG.nicho.defaultColor);
+  const [editingTag, setEditingTag] = useState<Tag | null>(null);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editType, setEditType] = useState<TagType>('nicho');
+  const [editColor, setEditColor] = useState<string>('#a855f7');
   const [isSubmitting, setIsSubmitting] = useState(false);
   
   // Selection state
@@ -148,7 +159,8 @@ function TagsContent() {
       const transformedTags: Tag[] = (tagsData || []).map((t) => ({
         id: t.id,
         name: t.name,
-        type: t.type as Tag['type'],
+        type: t.type,
+        color: t.color || null,
         monitorsCount: t.monitor_tags?.length || 0,
       }));
 
@@ -280,6 +292,7 @@ function TagsContent() {
           user_id: user.id,
           name: newTagName.trim(),
           type: newTagType,
+          color: newTagColor,
         });
 
       if (error) throw error;
@@ -326,6 +339,34 @@ function TagsContent() {
     } catch (error: any) {
       toast({
         title: "Erro ao excluir tag",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleEditTag = async () => {
+    if (!editingTag || !editName.trim()) return;
+
+    try {
+      const { error } = await supabase
+        .from('tags')
+        .update({
+          name: editName.trim(),
+          type: editType,
+          color: editColor,
+        })
+        .eq('id', editingTag.id);
+
+      if (error) throw error;
+
+      toast({ title: "Tag atualizada!" });
+      setEditDialogOpen(false);
+      setEditingTag(null);
+      fetchTags();
+    } catch (error: any) {
+      toast({
+        title: "Erro ao atualizar tag",
         description: error.message,
         variant: "destructive",
       });
@@ -458,7 +499,7 @@ function TagsContent() {
                       className="flex items-center gap-1 cursor-pointer hover:bg-destructive/20"
                       onClick={() => toggleTagSelection(tag.id)}
                     >
-                      <TagChip type={tag.type} name={tag.name} size="sm" />
+                      <TagChip type={tag.type as TagType} name={tag.name} color={tag.color} size="sm" />
                       <X className="h-3 w-3" />
                     </Badge>
                   ))}
@@ -501,10 +542,9 @@ function TagsContent() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos os tipos</SelectItem>
-                  <SelectItem value="nicho">Nicho</SelectItem>
-                  <SelectItem value="idioma">Idioma</SelectItem>
-                  <SelectItem value="pais">País</SelectItem>
-                  <SelectItem value="custom">Personalizado</SelectItem>
+                  {TAG_TYPES.map((t) => (
+                    <SelectItem key={t} value={t}>{TAG_TYPE_CONFIG[t].label}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -561,7 +601,7 @@ function TagsContent() {
                         }`}
                       >
                         <div className="flex items-center gap-3">
-                          <TagChip name={tag.name} type={tag.type} />
+                          <TagChip name={tag.name} type={tag.type as TagType} color={tag.color} />
                           <div className="flex items-center gap-2">
                             <span className="text-sm text-muted-foreground">
                               {tag.monitorsCount} monitores
@@ -580,7 +620,16 @@ function TagsContent() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingTag(tag);
+                                setEditName(tag.name);
+                                setEditType(tag.type as TagType);
+                                setEditColor(tag.color || getTagColor(tag.type as TagType));
+                                setEditDialogOpen(true);
+                              }}
+                            >
                               <Edit className="h-4 w-4 mr-2" />
                               Editar
                             </DropdownMenuItem>
@@ -899,18 +948,42 @@ function TagsContent() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="tagType" className="text-foreground">Tipo</Label>
-                <Select value={newTagType} onValueChange={(v: any) => setNewTagType(v)}>
+                <Select value={newTagType} onValueChange={(v: TagType) => {
+                  setNewTagType(v);
+                  setNewTagColor(TAG_TYPE_CONFIG[v].defaultColor);
+                }}>
                   <SelectTrigger className="bg-muted border-border">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="nicho">Nicho</SelectItem>
-                    <SelectItem value="idioma">Idioma</SelectItem>
-                    <SelectItem value="pais">País</SelectItem>
-                    <SelectItem value="custom">Personalizado</SelectItem>
+                    {TAG_TYPES.map((t) => (
+                      <SelectItem key={t} value={t}>{TAG_TYPE_CONFIG[t].label}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
+              <div className="space-y-2">
+                <Label className="text-foreground">Cor</Label>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {PRESET_TAG_COLORS.map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setNewTagColor(c)}
+                      className={`w-6 h-6 rounded-full transition-all border-2 ${
+                        newTagColor === c ? 'border-foreground scale-125' : 'border-transparent hover:scale-110'
+                      }`}
+                      style={{ backgroundColor: c }}
+                    />
+                  ))}
+                </div>
+              </div>
+              {newTagName && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">Preview:</span>
+                  <TagChip name={newTagName} type={newTagType} color={newTagColor} />
+                </div>
+              )}
               <div className="flex justify-end gap-3 pt-4">
                 <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
                   Cancelar
@@ -924,6 +997,72 @@ function TagsContent() {
                 </Button>
               </div>
             </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* Edit Tag Dialog */}
+        <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+          <DialogContent className="bg-card border-border">
+            <DialogHeader>
+              <DialogTitle className="text-foreground">Editar Tag</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 mt-4">
+              <div className="space-y-2">
+                <Label className="text-foreground">Nome</Label>
+                <Input
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="bg-muted border-border"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label className="text-foreground">Tipo</Label>
+                <Select value={editType} onValueChange={(v: TagType) => {
+                  setEditType(v);
+                }}>
+                  <SelectTrigger className="bg-muted border-border">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TAG_TYPES.map((t) => (
+                      <SelectItem key={t} value={t}>{TAG_TYPE_CONFIG[t].label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-foreground">Cor</Label>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {PRESET_TAG_COLORS.map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setEditColor(c)}
+                      className={`w-6 h-6 rounded-full transition-all border-2 ${
+                        editColor === c ? 'border-foreground scale-125' : 'border-transparent hover:scale-110'
+                      }`}
+                      style={{ backgroundColor: c }}
+                    />
+                  ))}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">Preview:</span>
+                <TagChip name={editName || 'exemplo'} type={editType} color={editColor} />
+              </div>
+              <div className="flex justify-end gap-3 pt-4">
+                <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={handleEditTag}
+                  disabled={!editName.trim()}
+                  className="bg-primary text-primary-foreground hover:bg-primary/90"
+                >
+                  Salvar
+                </Button>
+              </div>
+            </div>
           </DialogContent>
         </Dialog>
 

@@ -105,7 +105,7 @@ export function KanbanCardDialog({
             <div className="flex flex-wrap gap-1.5">
               {monitor.tags.length > 0 ? (
                 monitor.tags.map((tag) => (
-                  <TagChip key={tag.id} name={tag.name} type={tag.type} size="sm" />
+                  <TagChip key={tag.id} name={tag.name} type={tag.type} color={tag.color} size="sm" />
                 ))
               ) : (
                 <span className="text-xs text-muted-foreground">Sem tags</span>

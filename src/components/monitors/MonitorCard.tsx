@@ -287,6 +287,7 @@ export function MonitorCard({
               <TagChip
                 key={tag.id}
                 name={tag.name}
+                color={tag.color}
                 type={tag.type}
                 size="sm"
               />

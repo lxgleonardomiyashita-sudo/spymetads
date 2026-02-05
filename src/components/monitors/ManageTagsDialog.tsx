@@ -19,12 +19,8 @@ import { Plus, Loader2, Tags } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-
-interface Tag {
-  id: string;
-  name: string;
-  type: 'nicho' | 'idioma' | 'pais' | 'custom';
-}
+import type { Tag, TagType } from "@/types/monitor";
+import { TAG_TYPE_CONFIG, TAG_TYPES, PRESET_TAG_COLORS, getTagColor } from "@/lib/tag-constants";
 
 interface ManageTagsDialogProps {
   open: boolean;
@@ -49,7 +45,8 @@ export function ManageTagsDialog({
   const { toast } = useToast();
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [newTagName, setNewTagName] = useState("");
-  const [newTagType, setNewTagType] = useState<'nicho' | 'idioma' | 'pais' | 'custom'>('nicho');
+  const [newTagType, setNewTagType] = useState<TagType>('nicho');
+  const [newTagColor, setNewTagColor] = useState<string>(TAG_TYPE_CONFIG.nicho.defaultColor);
   const [isLoading, setIsLoading] = useState(false);
   const [isAddingTag, setIsAddingTag] = useState(false);
 
@@ -77,6 +74,7 @@ export function ManageTagsDialog({
           user_id: user.id,
           name: newTagName.trim(),
           type: newTagType,
+          color: newTagColor,
         })
         .select()
         .single();
@@ -194,7 +192,7 @@ export function ManageTagsDialog({
                         : 'opacity-50 hover:opacity-100'
                     }`}
                   >
-                    <TagChip name={tag.name} type={tag.type} />
+                    <TagChip name={tag.name} type={tag.type} color={tag.color} />
                   </button>
                 ))}
               </div>
@@ -202,7 +200,7 @@ export function ManageTagsDialog({
           )}
 
           {/* Create New Tag */}
-          <div className="space-y-2 pt-4 border-t border-border">
+          <div className="space-y-3 pt-4 border-t border-border">
             <p className="text-sm text-muted-foreground">Criar nova tag:</p>
             <div className="flex gap-2">
               <Input
@@ -211,15 +209,17 @@ export function ManageTagsDialog({
                 onChange={(e) => setNewTagName(e.target.value)}
                 className="bg-muted border-border flex-1"
               />
-              <Select value={newTagType} onValueChange={(v: any) => setNewTagType(v)}>
-                <SelectTrigger className="w-28 bg-muted border-border">
+              <Select value={newTagType} onValueChange={(v: TagType) => {
+                setNewTagType(v);
+                setNewTagColor(TAG_TYPE_CONFIG[v].defaultColor);
+              }}>
+                <SelectTrigger className="w-36 bg-muted border-border">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="nicho">Nicho</SelectItem>
-                  <SelectItem value="idioma">Idioma</SelectItem>
-                  <SelectItem value="pais">País</SelectItem>
-                  <SelectItem value="custom">Custom</SelectItem>
+                  {TAG_TYPES.map((t) => (
+                    <SelectItem key={t} value={t}>{TAG_TYPE_CONFIG[t].label}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
               <Button
@@ -231,6 +231,27 @@ export function ManageTagsDialog({
                 {isAddingTag ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
               </Button>
             </div>
+            {/* Color picker */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs text-muted-foreground">Cor:</span>
+              {PRESET_TAG_COLORS.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setNewTagColor(c)}
+                  className={`w-5 h-5 rounded-full transition-all border-2 ${
+                    newTagColor === c ? 'border-foreground scale-125' : 'border-transparent hover:scale-110'
+                  }`}
+                  style={{ backgroundColor: c }}
+                />
+              ))}
+            </div>
+            {newTagName && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">Preview:</span>
+                <TagChip name={newTagName || 'exemplo'} type={newTagType} color={newTagColor} />
+              </div>
+            )}
           </div>
 
           {/* Actions */}

@@ -1,7 +1,10 @@
+export type TagType = 'nicho' | 'idioma' | 'pais' | 'modelo_funil' | 'faixa_preco' | 'custom';
+
 export interface Tag {
   id: string;
   name: string;
-  type: 'nicho' | 'idioma' | 'pais' | 'custom';
+  type: TagType;
+  color?: string | null;
 }
 
 export interface Group {

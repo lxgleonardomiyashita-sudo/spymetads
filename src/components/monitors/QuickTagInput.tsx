@@ -2,18 +2,13 @@ import { useState, useRef, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { TagChip } from "@/components/ui/tag-chip";
-import { Badge } from "@/components/ui/badge";
 import { Plus, X, Check, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-
-interface Tag {
-  id: string;
-  name: string;
-  type: 'nicho' | 'idioma' | 'pais' | 'custom';
-}
+import type { Tag, TagType } from "@/types/monitor";
+import { TAG_TYPE_CONFIG, TAG_TYPES, getTagColor } from "@/lib/tag-constants";
 
 interface QuickTagInputProps {
   monitorId: string;
@@ -22,13 +17,6 @@ interface QuickTagInputProps {
   onTagsUpdated: () => void;
   compact?: boolean;
 }
-
-const TAG_TYPE_COLORS = {
-  nicho: 'bg-primary/20 text-primary hover:bg-primary/30',
-  idioma: 'bg-chart-2/20 text-chart-2 hover:bg-chart-2/30',
-  pais: 'bg-chart-3/20 text-chart-3 hover:bg-chart-3/30',
-  custom: 'bg-chart-4/20 text-chart-4 hover:bg-chart-4/30',
-};
 
 export function QuickTagInput({
   monitorId,
@@ -42,7 +30,7 @@ export function QuickTagInput({
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedType, setSelectedType] = useState<'nicho' | 'idioma' | 'pais' | 'custom'>('nicho');
+  const [selectedType, setSelectedType] = useState<TagType>('nicho');
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -174,7 +162,7 @@ export function QuickTagInput({
       <div className="flex flex-wrap gap-1 items-center">
         {currentTags.map(tag => (
           <div key={tag.id} className="group relative">
-            <TagChip name={tag.name} type={tag.type} size="sm" />
+            <TagChip name={tag.name} type={tag.type} color={tag.color} size="sm" />
             <button
               onClick={(e) => { e.stopPropagation(); handleRemoveTag(tag.id); }}
               className="absolute -top-1 -right-1 h-3.5 w-3.5 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
@@ -218,17 +206,20 @@ export function QuickTagInput({
           {/* Type selector for new tags */}
           {searchTerm && !exactMatch && (
             <div className="flex gap-1 flex-wrap">
-              {(['nicho', 'idioma', 'pais', 'custom'] as const).map(type => (
+              {TAG_TYPES.map(type => (
                 <button
                   key={type}
                   onClick={() => setSelectedType(type)}
                   className={cn(
-                    "text-[10px] px-2 py-0.5 rounded-full transition-all",
-                    TAG_TYPE_COLORS[type],
-                    selectedType === type && "ring-1 ring-offset-1 ring-offset-popover"
+                    "text-[10px] px-2 py-0.5 rounded-full transition-all"
                   )}
+                  style={{
+                    backgroundColor: `${getTagColor(type)}20`,
+                    color: getTagColor(type),
+                    ...(selectedType === type ? { boxShadow: `0 0 0 1px ${getTagColor(type)}` } : {}),
+                  }}
                 >
-                  {type === 'nicho' ? 'Nicho' : type === 'idioma' ? 'Idioma' : type === 'pais' ? 'País' : 'Custom'}
+                  {TAG_TYPE_CONFIG[type].label}
                 </button>
               ))}
             </div>
@@ -245,7 +236,7 @@ export function QuickTagInput({
               >
                 <Plus className="h-3.5 w-3.5 text-primary" />
                 <span>Criar</span>
-                <TagChip name={searchTerm} type={selectedType} size="sm" />
+                <TagChip name={searchTerm} type={selectedType} color={getTagColor(selectedType)} size="sm" />
               </button>
             )}
 
@@ -259,7 +250,7 @@ export function QuickTagInput({
                   disabled={isLoading}
                 >
                   <Check className="h-3.5 w-3.5 text-transparent" />
-                  <TagChip name={tag.name} type={tag.type} size="sm" />
+                  <TagChip name={tag.name} type={tag.type} color={tag.color} size="sm" />
                 </button>
               ))
             ) : !searchTerm && popularTags.length > 0 ? (
@@ -273,7 +264,7 @@ export function QuickTagInput({
                     disabled={isLoading}
                   >
                     <Check className="h-3.5 w-3.5 text-transparent" />
-                    <TagChip name={tag.name} type={tag.type} size="sm" />
+                    <TagChip name={tag.name} type={tag.type} color={tag.color} size="sm" />
                   </button>
                 ))}
               </>
