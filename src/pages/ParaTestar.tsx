@@ -48,7 +48,7 @@ function KanbanCard({
           {monitor.tags.length > 0 && (
             <div className="flex flex-wrap gap-1 mt-2">
               {monitor.tags.map((tag) => (
-                <TagChip key={tag.id} name={tag.name} type={tag.type} size="sm" />
+                <TagChip key={tag.id} name={tag.name} type={tag.type} color={tag.color} size="sm" />
               ))}
             </div>
           )}

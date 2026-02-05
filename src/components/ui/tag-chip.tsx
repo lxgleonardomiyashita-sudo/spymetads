@@ -1,9 +1,12 @@
 import { cn } from "@/lib/utils";
 import { X } from "lucide-react";
+import type { TagType } from "@/types/monitor";
+import { getTagColor } from "@/lib/tag-constants";
 
 interface TagChipProps {
   name: string;
-  type: 'nicho' | 'idioma' | 'pais' | 'custom';
+  type: TagType;
+  color?: string | null;
   size?: 'sm' | 'md';
   removable?: boolean;
   onRemove?: () => void;
@@ -13,17 +16,13 @@ interface TagChipProps {
 export function TagChip({
   name,
   type,
+  color,
   size = 'md',
   removable = false,
   onRemove,
   className,
 }: TagChipProps) {
-  const typeClasses = {
-    nicho: 'tag-chip-niche',
-    idioma: 'tag-chip-idioma',
-    pais: 'tag-chip-pais',
-    custom: 'tag-chip-custom',
-  };
+  const resolvedColor = getTagColor(type, color);
 
   const sizeClasses = {
     sm: 'text-[10px] px-2 py-0.5',
@@ -34,10 +33,16 @@ export function TagChip({
     <span
       className={cn(
         "tag-chip",
-        typeClasses[type],
         sizeClasses[size],
         className
       )}
+      style={{
+        backgroundColor: `${resolvedColor}20`,
+        color: resolvedColor,
+        borderColor: `${resolvedColor}30`,
+        borderWidth: '1px',
+        borderStyle: 'solid',
+      }}
     >
       <span className="truncate max-w-[100px]">{name}</span>
       {removable && onRemove && (

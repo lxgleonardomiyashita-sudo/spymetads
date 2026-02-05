@@ -13,6 +13,7 @@ interface Tag {
   id: string;
   name: string;
   type: string;
+  color?: string | null;
 }
 
 interface TagFilterProps {
