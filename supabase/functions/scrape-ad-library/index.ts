@@ -27,7 +27,6 @@ function extractAdsFromContent(htmlContent: string, markdownContent: string): Ex
   const ads: ExtractedAd[] = [];
   const seenIds = new Set<string>();
 
-  // Pattern 1: Extract ad_archive_id from URLs
   const adIdPattern = /ad_archive_id[=:]?\s*["']?(\d{10,20})["']?/gi;
   let match;
   
@@ -47,7 +46,6 @@ function extractAdsFromContent(htmlContent: string, markdownContent: string): Ex
     }
   }
 
-  // Pattern 2: Extract from data attributes
   const dataAdPattern = /data-ad-archive-id=["'](\d{10,20})["']/gi;
   while ((match = dataAdPattern.exec(htmlContent)) !== null) {
     const adId = match[1];
@@ -65,20 +63,17 @@ function extractAdsFromContent(htmlContent: string, markdownContent: string): Ex
     }
   }
 
-  // Pattern 3: Try to extract start dates from content
   const startDatePattern = /Started running on\s*([\w\s,]+\d{4})/gi;
   const dates: string[] = [];
   while ((match = startDatePattern.exec(markdownContent)) !== null) {
     dates.push(match[1].trim());
   }
 
-  // Try alternative date patterns
   const altDatePattern = /(?:Começou a ser veiculado em|Em exibição desde)\s*([\d\/]+)/gi;
   while ((match = altDatePattern.exec(markdownContent)) !== null) {
     dates.push(match[1].trim());
   }
 
-  // Assign dates to ads if we found matching counts
   if (dates.length > 0) {
     ads.forEach((ad, index) => {
       if (dates[index]) {
@@ -95,7 +90,6 @@ function extractAdsFromContent(htmlContent: string, markdownContent: string): Ex
     });
   }
 
-  // Pattern 4: Extract ad body text - look for common patterns
   const bodyPatterns = [
     /"body":\s*\{[^}]*"text":\s*"([^"]+)"/gi,
     /"message":\s*"([^"]{20,500})"/gi,
@@ -114,7 +108,6 @@ function extractAdsFromContent(htmlContent: string, markdownContent: string): Ex
     }
   });
 
-  // Pattern 5: Extract preview URLs
   const previewPattern = /(?:image|thumbnail|preview)[^"]*":\s*"(https:\/\/[^"]+)"/gi;
   const previews: string[] = [];
   while ((match = previewPattern.exec(htmlContent)) !== null) {
@@ -131,7 +124,6 @@ function extractAdsFromContent(htmlContent: string, markdownContent: string): Ex
   return ads;
 }
 
-// Calculate days active based on ad_start_date
 function calculateDaysActive(startDate: string | null): number {
   if (!startDate) return 0;
   try {
@@ -143,6 +135,40 @@ function calculateDaysActive(startDate: string | null): number {
   } catch {
     return 0;
   }
+}
+
+/**
+ * Detect if a new count is an anomalous spike compared to recent history.
+ * Returns true if the count looks like a false positive (e.g., lifetime total instead of active count).
+ */
+function isAnomalousSpike(newCount: number, recentCounts: number[]): boolean {
+  if (recentCounts.length < 2) return false; // Not enough history to judge
+  if (newCount === 0) return false; // Zero is never a spike
+  
+  // Filter out zeros and previous anomalies for baseline calculation
+  const validCounts = recentCounts.filter(c => c > 0);
+  if (validCounts.length === 0) {
+    // All recent readings were 0, any large number is suspicious
+    return newCount > 100;
+  }
+
+  // Calculate median of recent valid counts
+  const sorted = [...validCounts].sort((a, b) => a - b);
+  const median = sorted[Math.floor(sorted.length / 2)];
+
+  // Calculate max of recent valid counts
+  const maxRecent = Math.max(...validCounts);
+
+  // If the new count is more than 10x the median AND more than 5x the max recent, it's suspicious
+  const spikeRatio = newCount / median;
+  const maxRatio = newCount / maxRecent;
+
+  if (spikeRatio > 10 && maxRatio > 5) {
+    console.log(`ANOMALY DETECTED: new=${newCount}, median=${median}, max=${maxRecent}, spikeRatio=${spikeRatio.toFixed(1)}, maxRatio=${maxRatio.toFixed(1)}`);
+    return true;
+  }
+
+  return false;
 }
 
 serve(async (req) => {
@@ -184,12 +210,23 @@ serve(async (req) => {
 
     console.log(`Scraping Ad Library URL for monitor ${monitor_id}: ${url}`);
 
+    // Fetch recent readings for anomaly detection (last 10 ok readings)
+    const { data: recentReadings } = await supabase
+      .from('readings')
+      .select('ads_active_count')
+      .eq('monitor_id', monitor_id)
+      .eq('status', 'ok')
+      .order('timestamp', { ascending: false })
+      .limit(10);
+
+    const recentCounts = (recentReadings || []).map(r => r.ads_active_count);
+    console.log(`Recent counts for anomaly check: [${recentCounts.join(', ')}]`);
+
     let formattedUrl = url.trim();
     if (!formattedUrl.startsWith('http://') && !formattedUrl.startsWith('https://')) {
       formattedUrl = `https://${formattedUrl}`;
     }
 
-    // Add cache-busting timestamp to URL to ensure fresh data
     const cacheBuster = Date.now();
     const urlWithCacheBuster = formattedUrl.includes('?') 
       ? `${formattedUrl}&_cb=${cacheBuster}` 
@@ -240,11 +277,12 @@ serve(async (req) => {
     
     console.log('Scraped content length:', content.length);
 
-    // Extract total ads count
+    // === STEP 1: Extract ads count ===
     let adsCount = 0;
     let foundMatch = false;
+    let anomalyDetected = false;
 
-    // Strong signal for 0 ads (override any numeric noise in the page)
+    // Strong signal for 0 ads (override any numeric noise)
     const zeroPatterns = [
       /\bno\s+results\b/i,
       /\bnenhum\s+resultado\b/i,
@@ -261,6 +299,26 @@ serve(async (req) => {
       console.log('Detected zero ads message in page content');
     }
 
+    // EXCLUSION patterns: numbers that appear in historical/total context (NOT active ads)
+    // These patterns identify text that should NOT be used for active ad counts
+    const exclusionPatterns = [
+      /(?:ran|veiculou|publicou|total\s+(?:of|de))\s*(\d{1,3}(?:[.,]\d{3})*)\s*(?:ads?|an[úu]ncios?)/gi,
+      /(\d{1,3}(?:[.,]\d{3})*)\s*(?:total\s+)?(?:ads?|an[úu]ncios?)\s*(?:ran|veiculad|publicad|in\s+total|no\s+total)/gi,
+      /(?:this\s+page|esta\s+p[áa]gina)\s+.*?(\d{1,3}(?:[.,]\d{3})*)/gi,
+    ];
+
+    // Extract numbers that should be excluded (historical totals)
+    const excludedNumbers = new Set<number>();
+    for (const pattern of exclusionPatterns) {
+      let exMatch;
+      while ((exMatch = pattern.exec(content)) !== null) {
+        const num = parseInt(exMatch[1].replace(/[.,]/g, ''), 10);
+        excludedNumbers.add(num);
+        console.log(`Excluding historical number: ${num}`);
+      }
+    }
+
+    // Active ad count patterns (ordered by specificity)
     const patterns = [
       /(\d{1,3}(?:[.,]\d{3})*)\s*(?:results?|resultados?)/i,
       /(?:about|cerca de|approximately|aprox\.?)\s*(\d{1,3}(?:[.,]\d{3})*)\s*(?:ads?|anúncios?)/i,
@@ -269,12 +327,19 @@ serve(async (req) => {
       /(?:showing|mostrando)\s*\d+\s*(?:of|de)\s*(\d{1,3}(?:[.,]\d{3})*)/i,
     ];
 
-    // Only try numeric extraction if we did NOT already detect explicit 0-ads messaging
     if (!zeroDetected) {
       for (const pattern of patterns) {
         const match = content.match(pattern);
         if (match) {
-          adsCount = parseInt(match[1].replace(/[.,]/g, ''), 10);
+          const candidate = parseInt(match[1].replace(/[.,]/g, ''), 10);
+          
+          // Skip if this number was identified as a historical total
+          if (excludedNumbers.has(candidate)) {
+            console.log(`Skipping excluded historical number: ${candidate}`);
+            continue;
+          }
+
+          adsCount = candidate;
           foundMatch = true;
           console.log(`Found via pattern: ${adsCount}`);
           break;
@@ -282,26 +347,40 @@ serve(async (req) => {
       }
     }
 
-    // If still no match found, default to 0 (avoid false positives from IDs / page params)
     if (!foundMatch) {
       console.log(`No confident ads count found for monitor ${monitor_id}, defaulting to 0`);
       adsCount = 0;
     }
 
-    console.log(`Final ads count for monitor ${monitor_id}: ${adsCount}, found: ${foundMatch}`);
+    // === STEP 2: Anomaly / spike detection ===
+    // Even if the pattern matched "ok", check if the value makes sense vs recent history
+    if (foundMatch && adsCount > 0 && isAnomalousSpike(adsCount, recentCounts)) {
+      anomalyDetected = true;
+      console.log(`SPIKE REJECTED: ${adsCount} is anomalous compared to recent history [${recentCounts.join(', ')}]`);
+      // Don't trust this reading — mark suspect and keep the extracted count for auditing
+    }
+
+    const readingStatus = !foundMatch ? 'suspect' 
+      : anomalyDetected ? 'suspect' 
+      : 'ok';
+    
+    const errorMessage = !foundMatch 
+      ? 'Could not confidently extract ads count; defaulted to 0'
+      : anomalyDetected 
+        ? `Anomalous spike detected: ${adsCount} vs recent median. Likely historical total, not active count.`
+        : null;
+
+    console.log(`Final ads count for monitor ${monitor_id}: ${adsCount}, status: ${readingStatus}, found: ${foundMatch}, anomaly: ${anomalyDetected}`);
 
     // Insert reading
-    // status:
-    // - ok: confidently extracted OR explicit "0 ads" detected
-    // - suspect: defaulted to 0 due to inability to confidently extract
     const { data: readingData, error: insertError } = await supabase
       .from('readings')
       .insert({
         monitor_id,
         ads_active_count: adsCount,
         source_method: 'public_parse',
-        status: foundMatch ? 'ok' : 'suspect',
-        error_message: foundMatch ? null : 'Could not confidently extract ads count; defaulted to 0',
+        status: readingStatus,
+        error_message: errorMessage,
       })
       .select('id')
       .single();
@@ -320,7 +399,6 @@ serve(async (req) => {
       for (const ad of extractedAds) {
         const daysActive = calculateDaysActive(ad.ad_start_date);
 
-        // Upsert ad details
         const { error: upsertError } = await supabase
           .from('ad_details')
           .upsert(
@@ -351,7 +429,6 @@ serve(async (req) => {
         }
       }
 
-      // Update last_seen and is_active for seen ads
       const adIds = extractedAds.map(a => a.ad_archive_id);
       await supabase
         .from('ad_details')
@@ -370,6 +447,8 @@ serve(async (req) => {
         success: true,
         ads_count: adsCount,
         found_match: foundMatch,
+        anomaly_detected: anomalyDetected,
+        reading_status: readingStatus,
         source_method: 'public_parse',
         extracted_ads: extractedAds.length,
         saved_ads: savedAdsCount,
