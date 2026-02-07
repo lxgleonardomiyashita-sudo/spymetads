@@ -357,7 +357,14 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_monitor_stats: {
+        Args: { p_monitor_ids: string[] }
+        Returns: {
+          max_ads: number
+          monitor_id: string
+          total_readings: number
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never
