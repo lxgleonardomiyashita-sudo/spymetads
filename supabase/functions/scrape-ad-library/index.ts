@@ -140,31 +140,45 @@ function calculateDaysActive(startDate: string | null): number {
 /**
  * Detect if a new count is an anomalous spike compared to recent history.
  * Returns true if the count looks like a false positive (e.g., lifetime total instead of active count).
+ * 
+ * IMPROVED: Also detects "steady-state contamination" where the same high value
+ * has been repeated many times (indicating it was never the real active count).
  */
 function isAnomalousSpike(newCount: number, recentCounts: number[]): boolean {
-  if (recentCounts.length < 2) return false; // Not enough history to judge
-  if (newCount === 0) return false; // Zero is never a spike
+  if (recentCounts.length < 2) return false;
+  if (newCount === 0) return false;
   
-  // Filter out zeros and previous anomalies for baseline calculation
-  const validCounts = recentCounts.filter(c => c > 0);
+  // RULE 1: Absolute threshold — any single reading > 10,000 is suspicious
+  // Real active ad counts rarely exceed this for individual advertisers
+  if (newCount > 10000) {
+    console.log(`ANOMALY DETECTED (absolute threshold): ${newCount} exceeds 10,000 limit`);
+    return true;
+  }
+
+  // RULE 2: Steady-state contamination — if the same high value repeats in most recent readings,
+  // it's likely a historical total that was incorrectly scraped repeatedly
+  const sameValueCount = recentCounts.filter(c => c === newCount).length;
+  if (sameValueCount >= 3 && newCount > 500) {
+    console.log(`ANOMALY DETECTED (steady-state): ${newCount} appeared ${sameValueCount} times in last ${recentCounts.length} readings`);
+    return true;
+  }
+
+  // RULE 3: Spike vs baseline — compare against recent valid counts
+  const validCounts = recentCounts.filter(c => c > 0 && c < 10000);
   if (validCounts.length === 0) {
-    // All recent readings were 0, any large number is suspicious
+    // All recent readings were 0 or suspect, any large number is suspicious
     return newCount > 100;
   }
 
-  // Calculate median of recent valid counts
   const sorted = [...validCounts].sort((a, b) => a - b);
   const median = sorted[Math.floor(sorted.length / 2)];
-
-  // Calculate max of recent valid counts
   const maxRecent = Math.max(...validCounts);
 
-  // If the new count is more than 10x the median AND more than 5x the max recent, it's suspicious
   const spikeRatio = newCount / median;
   const maxRatio = newCount / maxRecent;
 
   if (spikeRatio > 10 && maxRatio > 5) {
-    console.log(`ANOMALY DETECTED: new=${newCount}, median=${median}, max=${maxRecent}, spikeRatio=${spikeRatio.toFixed(1)}, maxRatio=${maxRatio.toFixed(1)}`);
+    console.log(`ANOMALY DETECTED (spike): new=${newCount}, median=${median}, max=${maxRecent}, spikeRatio=${spikeRatio.toFixed(1)}, maxRatio=${maxRatio.toFixed(1)}`);
     return true;
   }
 
@@ -302,9 +316,18 @@ serve(async (req) => {
     // EXCLUSION patterns: numbers that appear in historical/total context (NOT active ads)
     // These patterns identify text that should NOT be used for active ad counts
     const exclusionPatterns = [
+      // "ran 39,308 ads" / "veiculou 39.308 anúncios" / "publicou X anúncios"
       /(?:ran|veiculou|publicou|total\s+(?:of|de))\s*(\d{1,3}(?:[.,]\d{3})*)\s*(?:ads?|an[úu]ncios?)/gi,
+      // "39,308 ads ran" / "39.308 anúncios veiculados"
       /(\d{1,3}(?:[.,]\d{3})*)\s*(?:total\s+)?(?:ads?|an[úu]ncios?)\s*(?:ran|veiculad|publicad|in\s+total|no\s+total)/gi,
+      // "This Page ran 39,308 ads" / "Esta Página veiculou 39.308 anúncios"
       /(?:this\s+page|esta\s+p[áa]gina)\s+.*?(\d{1,3}(?:[.,]\d{3})*)/gi,
+      // "Page transparency" section often contains historical totals
+      /(?:page\s+transparency|transpar[êe]ncia)\s+.*?(\d{1,3}(?:[.,]\d{3})*)/gi,
+      // "About this Page" section — "This Page has run ads about..."
+      /(?:about\s+this\s+page|sobre\s+esta\s+p[áa]gina)[\s\S]*?(\d{1,3}(?:[.,]\d{3})*)\s*(?:ads?|an[úu]ncios?)/gi,
+      // Generic "X ads from this page" pattern
+      /(\d{1,3}(?:[.,]\d{3})*)\s*(?:ads?\s+from|an[úu]ncios?\s+d[ea])\s+(?:this|esta)/gi,
     ];
 
     // Extract numbers that should be excluded (historical totals)
