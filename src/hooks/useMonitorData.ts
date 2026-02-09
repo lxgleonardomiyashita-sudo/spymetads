@@ -48,17 +48,17 @@ export function useMonitorData(options: UseMonitorDataOptions = {}) {
       let statsMap: Record<string, { max_ads: number; total_readings: number }> = {};
 
       if (monitorIds.length > 0) {
-        // Fetch latest reading per monitor (most recent one for display)
+        // Fetch latest OK reading per monitor (exclude suspect/error readings)
         const { data: readingsData } = await supabase
           .from('readings')
           .select('*')
           .in('monitor_id', monitorIds)
+          .in('status', ['ok'])
           .order('timestamp', { ascending: false })
           .limit(monitorIds.length * 3);
 
         if (readingsData) {
           readingsData.forEach((reading) => {
-            // Only take the first (most recent) reading per monitor
             if (!readingsMap[reading.monitor_id]) {
               readingsMap[reading.monitor_id] = reading;
             }
