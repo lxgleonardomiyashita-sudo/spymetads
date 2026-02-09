@@ -92,6 +92,7 @@ function AlertasContent() {
             "monitor_id",
             monitors.map((m) => m.id)
           )
+          .eq("status", "ok")
           .gte("timestamp", startDate)
           .lte("timestamp", endDate)
           .order("timestamp", { ascending: true });

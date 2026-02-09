@@ -91,6 +91,7 @@ function SpyEspecialContent() {
         .from("readings")
         .select("*")
         .in("monitor_id", monitorIds)
+        .eq("status", "ok")
         .gte("timestamp", thirtyDaysAgo)
         .order("timestamp", { ascending: true });
 

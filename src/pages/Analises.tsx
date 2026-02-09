@@ -169,6 +169,7 @@ function AnalisisContent() {
         .from("readings")
         .select("monitor_id, ads_active_count, timestamp")
         .in("monitor_id", filteredMonitorIds)
+        .eq("status", "ok")
         .gte("timestamp", startDate)
         .lte("timestamp", endDate)
         .order("timestamp", { ascending: true });
