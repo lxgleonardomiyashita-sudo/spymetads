@@ -87,6 +87,7 @@ export function MonitorInsightsDialog({
         .from("readings")
         .select("ads_active_count, timestamp, status")
         .eq("monitor_id", monitor.id)
+        .eq("status", "ok")
         .gte("timestamp", thirtyDaysAgo.toISOString())
         .order("timestamp", { ascending: true });
 

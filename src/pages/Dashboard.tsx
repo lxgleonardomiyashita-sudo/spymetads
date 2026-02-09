@@ -155,6 +155,7 @@ function DashboardContent() {
             .from('readings')
             .select('*')
             .in('monitor_id', monitorIds)
+            .eq('status', 'ok')
             .gte('timestamp', ninetyDaysAgo.toISOString())
             .order('timestamp', { ascending: false });
 
