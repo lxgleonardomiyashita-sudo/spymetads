@@ -85,17 +85,34 @@ function AlertasContent() {
         const startDate = startOfDay(subDays(new Date(), 7)).toISOString();
         const endDate = endOfDay(new Date()).toISOString();
 
-        const { data: readings } = await supabase
-          .from("readings")
-          .select("monitor_id, ads_active_count, timestamp")
-          .in(
-            "monitor_id",
-            monitors.map((m) => m.id)
-          )
-          .eq("status", "ok")
-          .gte("timestamp", startDate)
-          .lte("timestamp", endDate)
-          .order("timestamp", { ascending: true });
+        // Fetch in batches to bypass 1000-row limit
+        let allReadings: any[] = [];
+        const batchSize = 1000;
+        let offset = 0;
+        let hasMore = true;
+        const monitorIdsList = monitors.map((m) => m.id);
+
+        while (hasMore) {
+          const { data: batch } = await supabase
+            .from("readings")
+            .select("monitor_id, ads_active_count, timestamp")
+            .in("monitor_id", monitorIdsList)
+            .eq("status", "ok")
+            .gte("timestamp", startDate)
+            .lte("timestamp", endDate)
+            .order("timestamp", { ascending: true })
+            .range(offset, offset + batchSize - 1);
+
+          if (batch && batch.length > 0) {
+            allReadings = allReadings.concat(batch);
+            offset += batchSize;
+            hasMore = batch.length === batchSize;
+          } else {
+            hasMore = false;
+          }
+        }
+
+        const readings = allReadings;
 
         if (readings && readings.length > 0) {
           generateAlerts(readings, monitors, groups);
