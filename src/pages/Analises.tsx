@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import {
@@ -11,7 +11,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { Loader2, TrendingUp, TrendingDown, Minus, BarChart3, Clock } from "lucide-react";
+import { Loader2, TrendingUp, TrendingDown, Minus, BarChart3, Clock, BarChart2, Activity } from "lucide-react";
 import { format, subDays, startOfDay, endOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
@@ -28,10 +28,12 @@ import { TagFilter } from "@/components/analytics/TagFilter";
 import { BenchmarkingMetrics } from "@/components/analytics/BenchmarkingMetrics";
 import { DistributionCharts } from "@/components/analytics/DistributionCharts";
 import { QuickStatsBar } from "@/components/analytics/QuickStatsBar";
+import { PeriodSelector } from "@/components/dashboard/PeriodSelector";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface Group {
   id: string;
@@ -82,10 +84,12 @@ function AnalisisContent() {
   const [readings, setReadings] = useState<Reading[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState<string>("all");
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
-  const [period, setPeriod] = useState<string>("7");
+  const [period, setPeriod] = useState<string>("7d");
+  const [customRange, setCustomRange] = useState<{ from: Date; to: Date } | null>(null);
   const [chartData, setChartData] = useState<ChartData[]>([]);
   const [hourRange, setHourRange] = useState<HourRange>({ start: 0, end: 23 });
   const [hourFilterEnabled, setHourFilterEnabled] = useState(false);
+  const [chartViewMode, setChartViewMode] = useState<'daily' | 'hourly' | 'individual'>('daily');
 
   useEffect(() => {
     if (!user) return;
@@ -114,16 +118,47 @@ function AnalisisContent() {
     fetchData();
   }, [user]);
 
+  // Helper to get period bounds from period string
+  const getPeriodBounds = useCallback((periodValue: string, customRangeValue: { from: Date; to: Date } | null) => {
+    const now = new Date();
+    
+    if (periodValue === 'custom' && customRangeValue) {
+      const fromStart = startOfDay(customRangeValue.from);
+      const toEnd = endOfDay(customRangeValue.to);
+      return { start: fromStart, end: toEnd };
+    }
+    
+    const periodDays: Record<string, number> = {
+      'today': 0,
+      'yesterday': 1,
+      '3d': 3,
+      '7d': 7,
+      '14d': 14,
+      '30d': 30,
+      '60d': 60,
+      '90d': 90,
+      '180d': 180,
+    };
+    
+    const days = periodDays[periodValue] ?? 7;
+    
+    if (periodValue === 'yesterday') {
+      const yesterdayStart = startOfDay(subDays(now, 1));
+      const yesterdayEnd = endOfDay(subDays(now, 1));
+      return { start: yesterdayStart, end: yesterdayEnd };
+    }
+    
+    return { start: startOfDay(subDays(now, days)), end: endOfDay(now) };
+  }, []);
+
   // Filter monitors by group and tags
   const filteredMonitorIds = useMemo(() => {
     let filtered = monitors;
 
-    // Filter by group
     if (selectedGroupId !== "all") {
       filtered = filtered.filter((m) => m.group_id === selectedGroupId);
     }
 
-    // Filter by tags (AND logic - must have ALL selected tags)
     if (selectedTagIds.length > 0) {
       filtered = filtered.filter((m) => {
         const monitorTagIds = monitorTags
@@ -145,19 +180,19 @@ function AnalisisContent() {
       if (hourRange.start <= hourRange.end) {
         return hour >= hourRange.start && hour <= hourRange.end;
       } else {
-        // Handle overnight ranges like 22:00 - 06:00
         return hour >= hourRange.start || hour <= hourRange.end;
       }
     });
   }, [readings, hourRange, hourFilterEnabled]);
 
+  // Fetch readings when filters change
   useEffect(() => {
     if (!user || monitors.length === 0) return;
 
     const fetchReadings = async () => {
-      const days = parseInt(period);
-      const startDate = startOfDay(subDays(new Date(), days)).toISOString();
-      const endDate = endOfDay(new Date()).toISOString();
+      const { start, end } = getPeriodBounds(period, customRange);
+      const startDate = start.toISOString();
+      const endDate = end.toISOString();
 
       if (filteredMonitorIds.length === 0) {
         setReadings([]);
@@ -195,55 +230,118 @@ function AnalisisContent() {
     };
 
     fetchReadings();
-  }, [user, monitors, filteredMonitorIds, period]);
+  }, [user, monitors, filteredMonitorIds, period, customRange, getPeriodBounds]);
 
-  // Process chart data when readings or hour filter changes
+  // Process chart data when readings, hour filter, or view mode changes
   useEffect(() => {
     if (filteredReadingsByHour.length > 0 && filteredMonitorIds.length > 0) {
       processChartData(filteredReadingsByHour, filteredMonitorIds);
     } else {
       setChartData([]);
     }
-  }, [filteredReadingsByHour, filteredMonitorIds]);
+  }, [filteredReadingsByHour, filteredMonitorIds, chartViewMode, period, customRange]);
 
   const processChartData = (readingsData: Reading[], monitorIds: string[]) => {
-    const days = parseInt(period);
-    const dataByDate: Record<string, Record<string, number[]>> = {};
+    if (chartViewMode === 'hourly') {
+      // Group by hour of day (00:00, 01:00, ..., 23:00) — average across all days
+      const dataByHour: Record<string, Record<string, number[]>> = {};
 
-    for (let i = days; i >= 0; i--) {
-      const date = format(subDays(new Date(), i), "yyyy-MM-dd");
-      dataByDate[date] = {};
-      monitorIds.forEach((id) => {
-        dataByDate[date][id] = [];
-      });
-    }
-
-    readingsData.forEach((r) => {
-      const date = format(new Date(r.timestamp), "yyyy-MM-dd");
-      if (dataByDate[date] && dataByDate[date][r.monitor_id]) {
-        dataByDate[date][r.monitor_id].push(r.ads_active_count);
+      for (let h = 0; h < 24; h++) {
+        const hourKey = `${h.toString().padStart(2, '0')}:00`;
+        dataByHour[hourKey] = {};
+        monitorIds.forEach((id) => {
+          dataByHour[hourKey][id] = [];
+        });
       }
-    });
 
-    const chartDataArr: ChartData[] = Object.entries(dataByDate).map(([date, monitorData]) => {
-      const entry: ChartData = { date: format(new Date(date), "dd/MM", { locale: ptBR }) };
-      Object.entries(monitorData).forEach(([monitorId, counts]) => {
-        const monitor = monitors.find((m) => m.id === monitorId);
-        if (monitor && counts.length > 0) {
-          entry[monitor.name] = Math.round(counts.reduce((a, b) => a + b, 0) / counts.length);
+      readingsData.forEach((r) => {
+        const hour = new Date(r.timestamp).getHours();
+        const hourKey = `${hour.toString().padStart(2, '0')}:00`;
+        if (dataByHour[hourKey] && dataByHour[hourKey][r.monitor_id]) {
+          dataByHour[hourKey][r.monitor_id].push(r.ads_active_count);
         }
       });
-      return entry;
-    });
 
-    setChartData(chartDataArr);
+      const chartDataArr: ChartData[] = Object.entries(dataByHour).map(([hourKey, monitorData]) => {
+        const entry: ChartData = { date: hourKey };
+        Object.entries(monitorData).forEach(([monitorId, counts]) => {
+          const monitor = monitors.find((m) => m.id === monitorId);
+          if (monitor && counts.length > 0) {
+            entry[monitor.name] = Math.round(counts.reduce((a, b) => a + b, 0) / counts.length);
+          }
+        });
+        return entry;
+      }).sort((a, b) => (a.date as string).localeCompare(b.date as string));
+
+      setChartData(chartDataArr);
+    } else if (chartViewMode === 'individual') {
+      // Show each individual reading as a point (timestamp on x-axis)
+      const chartDataArr: ChartData[] = [];
+      const timeMap: Record<string, ChartData> = {};
+
+      readingsData.forEach((r) => {
+        const date = new Date(r.timestamp);
+        // Group by rounded 30-min intervals for readability
+        const minutes = Math.floor(date.getMinutes() / 30) * 30;
+        const timeKey = `${format(date, 'dd/MM')} ${date.getHours().toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+        
+        if (!timeMap[timeKey]) {
+          timeMap[timeKey] = { date: timeKey };
+        }
+        
+        const monitor = monitors.find((m) => m.id === r.monitor_id);
+        if (monitor) {
+          // Use latest value for this time slot
+          timeMap[timeKey][monitor.name] = r.ads_active_count;
+        }
+      });
+
+      const sorted = Object.values(timeMap).sort((a, b) => 
+        (a.date as string).localeCompare(b.date as string)
+      );
+
+      setChartData(sorted);
+    } else {
+      // Daily aggregation (default)
+      const { start, end } = getPeriodBounds(period, customRange);
+      const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+      const dataByDate: Record<string, Record<string, number[]>> = {};
+
+      for (let i = days; i >= 0; i--) {
+        const date = format(subDays(end, i), "yyyy-MM-dd");
+        dataByDate[date] = {};
+        monitorIds.forEach((id) => {
+          dataByDate[date][id] = [];
+        });
+      }
+
+      readingsData.forEach((r) => {
+        const date = format(new Date(r.timestamp), "yyyy-MM-dd");
+        if (dataByDate[date] && dataByDate[date][r.monitor_id]) {
+          dataByDate[date][r.monitor_id].push(r.ads_active_count);
+        }
+      });
+
+      const chartDataArr: ChartData[] = Object.entries(dataByDate).map(([date, monitorData]) => {
+        const entry: ChartData = { date: format(new Date(date), "dd/MM", { locale: ptBR }) };
+        Object.entries(monitorData).forEach(([monitorId, counts]) => {
+          const monitor = monitors.find((m) => m.id === monitorId);
+          if (monitor && counts.length > 0) {
+            entry[monitor.name] = Math.round(counts.reduce((a, b) => a + b, 0) / counts.length);
+          }
+        });
+        return entry;
+      });
+
+      setChartData(chartDataArr);
+    }
   };
 
   // Calculate statistics for filtered monitors (using hour-filtered readings)
   const stats = useMemo(() => {
-    const filteredMonitors = monitors.filter((m) => filteredMonitorIds.includes(m.id));
+    const filteredMons = monitors.filter((m) => filteredMonitorIds.includes(m.id));
 
-    return filteredMonitors.map((monitor) => {
+    return filteredMons.map((monitor) => {
       const monitorReadings = filteredReadingsByHour.filter((r) => r.monitor_id === monitor.id);
       if (monitorReadings.length === 0) return { monitor, current: 0, change: 0, trend: "neutral" as const };
 
@@ -273,43 +371,35 @@ function AnalisisContent() {
       };
     }
 
-    // Activity Index: average ads per monitor
     const totalAds = stats.reduce((sum, s) => sum + s.current, 0);
     const activityIndex = totalAds / stats.length;
 
-    // Volatility: standard deviation
     const mean = activityIndex;
     const variance = stats.reduce((sum, s) => sum + Math.pow(s.current - mean, 2), 0) / stats.length;
     const volatility = Math.sqrt(variance);
 
-    // Growth Rate: average change
     const growthRate = stats.reduce((sum, s) => sum + s.change, 0) / stats.length;
 
-    // Concentration (HHI): sum of squared market shares
     const shares = stats.map((s) => (totalAds > 0 ? s.current / totalAds : 0));
     const concentration = shares.reduce((sum, share) => sum + Math.pow(share, 2), 0);
 
-    // Top Rising
     const topRising = stats
       .filter((s) => s.change > 0)
       .sort((a, b) => b.change - a.change)
       .slice(0, 3)
       .map((s) => ({ name: s.monitor.name, change: s.change }));
 
-    // Top Falling
     const topFalling = stats
       .filter((s) => s.change < 0)
       .sort((a, b) => a.change - b.change)
       .slice(0, 3)
       .map((s) => ({ name: s.monitor.name, change: s.change }));
 
-    // Dominant Monitors (>20% market share)
     const dominantMonitors = stats
       .filter((s) => totalAds > 0 && s.current / totalAds > 0.2)
       .map((s) => ({ name: s.monitor.name, share: (s.current / totalAds) * 100 }))
       .sort((a, b) => b.share - a.share);
 
-    // Diversification
     const activeMonitors = stats.filter((s) => s.current > 0).length;
 
     return {
@@ -326,7 +416,6 @@ function AnalisisContent() {
 
   // Calculate distribution data
   const distributionData = useMemo(() => {
-    // Group distribution
     const groupAds: Record<string, number> = {};
     stats.forEach((s) => {
       const group = groups.find((g) => g.id === s.monitor.group_id);
@@ -341,7 +430,6 @@ function AnalisisContent() {
       return { name, value, color };
     });
 
-    // Tag distribution
     const tagAds: Record<string, { value: number; type: string }> = {};
     stats.forEach((s) => {
       const monitorTagIds = monitorTags
@@ -370,6 +458,17 @@ function AnalisisContent() {
 
   const filteredMonitors = monitors.filter((m) => filteredMonitorIds.includes(m.id));
   const chartColors = ["#22d3ee", "#a855f7", "#22c55e", "#f59e0b", "#ef4444", "#3b82f6", "#ec4899"];
+
+  const getChartTitle = () => {
+    switch (chartViewMode) {
+      case 'hourly':
+        return 'Média de Anúncios por Hora do Dia';
+      case 'individual':
+        return 'Leituras Individuais (cada coleta)';
+      default:
+        return 'Evolução de Anúncios Ativos';
+    }
+  };
 
   if (isLoading) {
     return (
@@ -418,21 +517,12 @@ function AnalisisContent() {
               onSelectionChange={setSelectedTagIds}
             />
 
-            <Select value={period} onValueChange={setPeriod}>
-              <SelectTrigger className="w-[160px] bg-card border-border">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="0">Hoje</SelectItem>
-                <SelectItem value="1">Ontem</SelectItem>
-                <SelectItem value="7">Últimos 7 dias</SelectItem>
-                <SelectItem value="14">Últimos 14 dias</SelectItem>
-                <SelectItem value="30">Últimos 30 dias</SelectItem>
-                <SelectItem value="60">Últimos 60 dias</SelectItem>
-                <SelectItem value="90">Últimos 90 dias</SelectItem>
-                <SelectItem value="180">Últimos 180 dias</SelectItem>
-              </SelectContent>
-            </Select>
+            <PeriodSelector
+              value={period}
+              onChange={setPeriod}
+              customRange={customRange}
+              onCustomRangeChange={setCustomRange}
+            />
 
             <Popover>
               <PopoverTrigger asChild>
@@ -598,13 +688,31 @@ function AnalisisContent() {
               ))}
             </div>
 
-            {/* Evolution Chart */}
+            {/* Evolution Chart with View Toggle */}
             {chartData.length > 0 && filteredMonitors.length > 0 && (
               <Card className="bg-card border-border">
                 <CardHeader>
-                  <CardTitle className="text-foreground">
-                    Evolução de Anúncios Ativos
-                  </CardTitle>
+                  <div className="flex items-center justify-between flex-wrap gap-3">
+                    <CardTitle className="text-foreground">
+                      {getChartTitle()}
+                    </CardTitle>
+                    <Tabs value={chartViewMode} onValueChange={(v) => setChartViewMode(v as any)}>
+                      <TabsList className="bg-muted">
+                        <TabsTrigger value="daily" className="gap-1.5 text-xs">
+                          <BarChart2 className="h-3.5 w-3.5" />
+                          Diário
+                        </TabsTrigger>
+                        <TabsTrigger value="hourly" className="gap-1.5 text-xs">
+                          <Clock className="h-3.5 w-3.5" />
+                          Por Hora
+                        </TabsTrigger>
+                        <TabsTrigger value="individual" className="gap-1.5 text-xs">
+                          <Activity className="h-3.5 w-3.5" />
+                          Individual
+                        </TabsTrigger>
+                      </TabsList>
+                    </Tabs>
+                  </div>
                 </CardHeader>
                 <CardContent>
                   <div className="h-[400px]">
@@ -614,7 +722,10 @@ function AnalisisContent() {
                         <XAxis
                           dataKey="date"
                           stroke="hsl(var(--muted-foreground))"
-                          fontSize={12}
+                          fontSize={11}
+                          angle={chartViewMode === 'individual' ? -45 : 0}
+                          textAnchor={chartViewMode === 'individual' ? 'end' : 'middle'}
+                          height={chartViewMode === 'individual' ? 60 : 30}
                         />
                         <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} />
                         <Tooltip
@@ -633,7 +744,8 @@ function AnalisisContent() {
                             dataKey={monitor.name}
                             stroke={chartColors[idx % chartColors.length]}
                             strokeWidth={2}
-                            dot={false}
+                            dot={chartViewMode === 'individual'}
+                            connectNulls
                           />
                         ))}
                       </LineChart>
