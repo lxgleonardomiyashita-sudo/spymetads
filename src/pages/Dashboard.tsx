@@ -151,13 +151,32 @@ function DashboardContent() {
           const ninetyDaysAgo = new Date();
           ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
 
-          const { data: readingsData } = await supabase
-            .from('readings')
-            .select('*')
-            .in('monitor_id', monitorIds)
-            .eq('status', 'ok')
-            .gte('timestamp', ninetyDaysAgo.toISOString())
-            .order('timestamp', { ascending: false });
+          // Fetch in batches to bypass 1000-row default limit
+          let allReadingsData: any[] = [];
+          const batchSize = 1000;
+          let offset = 0;
+          let hasMore = true;
+
+          while (hasMore) {
+            const { data: batch } = await supabase
+              .from('readings')
+              .select('*')
+              .in('monitor_id', monitorIds)
+              .eq('status', 'ok')
+              .gte('timestamp', ninetyDaysAgo.toISOString())
+              .order('timestamp', { ascending: false })
+              .range(offset, offset + batchSize - 1);
+
+            if (batch && batch.length > 0) {
+              allReadingsData = allReadingsData.concat(batch);
+              offset += batchSize;
+              hasMore = batch.length === batchSize;
+            } else {
+              hasMore = false;
+            }
+          }
+
+          const readingsData = allReadingsData;
 
           if (readingsData) {
             allReadings = readingsData;

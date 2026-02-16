@@ -165,18 +165,33 @@ function AnalisisContent() {
         return;
       }
 
-      const { data } = await supabase
-        .from("readings")
-        .select("monitor_id, ads_active_count, timestamp")
-        .in("monitor_id", filteredMonitorIds)
-        .eq("status", "ok")
-        .gte("timestamp", startDate)
-        .lte("timestamp", endDate)
-        .order("timestamp", { ascending: true });
+      // Fetch in batches to bypass 1000-row default limit
+      let allData: Reading[] = [];
+      const batchSize = 1000;
+      let offset = 0;
+      let hasMore = true;
 
-      if (data) {
-        setReadings(data);
+      while (hasMore) {
+        const { data: batch } = await supabase
+          .from("readings")
+          .select("monitor_id, ads_active_count, timestamp")
+          .in("monitor_id", filteredMonitorIds)
+          .eq("status", "ok")
+          .gte("timestamp", startDate)
+          .lte("timestamp", endDate)
+          .order("timestamp", { ascending: true })
+          .range(offset, offset + batchSize - 1);
+
+        if (batch && batch.length > 0) {
+          allData = allData.concat(batch);
+          offset += batchSize;
+          hasMore = batch.length === batchSize;
+        } else {
+          hasMore = false;
+        }
       }
+
+      setReadings(allData);
     };
 
     fetchReadings();

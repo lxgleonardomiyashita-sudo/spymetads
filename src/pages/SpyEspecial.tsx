@@ -87,16 +87,33 @@ function SpyEspecialContent() {
       const monitorIds = savedMonitors.map(s => s.monitor_id);
       const thirtyDaysAgo = subDays(new Date(), 30).toISOString();
       
-      const { data, error } = await supabase
-        .from("readings")
-        .select("*")
-        .in("monitor_id", monitorIds)
-        .eq("status", "ok")
-        .gte("timestamp", thirtyDaysAgo)
-        .order("timestamp", { ascending: true });
+      // Fetch in batches to bypass 1000-row limit
+      let allData: any[] = [];
+      const batchSize = 1000;
+      let offset = 0;
+      let hasMore = true;
 
-      if (error) throw error;
-      return data || [];
+      while (hasMore) {
+        const { data: batch, error: batchError } = await supabase
+          .from("readings")
+          .select("*")
+          .in("monitor_id", monitorIds)
+          .eq("status", "ok")
+          .gte("timestamp", thirtyDaysAgo)
+          .order("timestamp", { ascending: true })
+          .range(offset, offset + batchSize - 1);
+
+        if (batchError) throw batchError;
+        if (batch && batch.length > 0) {
+          allData = allData.concat(batch);
+          offset += batchSize;
+          hasMore = batch.length === batchSize;
+        } else {
+          hasMore = false;
+        }
+      }
+
+      return allData;
     },
     enabled: savedMonitors.length > 0,
     staleTime: 1000 * 60 * 5,
