@@ -16,6 +16,7 @@ import SpyEspecial from "./pages/SpyEspecial";
 import ParaTestar from "./pages/ParaTestar";
 import Configuracoes from "./pages/Configuracoes";
 import Auth from "./pages/Auth";
+import SuperGrupos from "./pages/SuperGrupos";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -47,6 +48,7 @@ const App = () => (
             <Route path="/alertas" element={<Alertas />} />
             <Route path="/spy-especial" element={<SpyEspecial />} />
             <Route path="/para-testar" element={<ParaTestar />} />
+            <Route path="/super-grupos" element={<SuperGrupos />} />
             <Route path="/configuracoes" element={<Configuracoes />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />

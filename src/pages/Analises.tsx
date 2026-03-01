@@ -11,7 +11,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { Loader2, TrendingUp, TrendingDown, Minus, BarChart3, Clock, BarChart2, Activity } from "lucide-react";
+import { Loader2, TrendingUp, TrendingDown, Minus, BarChart3, Clock, BarChart2, Activity, Check } from "lucide-react";
 import { format, subDays, startOfDay, endOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
@@ -29,6 +29,7 @@ import { BenchmarkingMetrics } from "@/components/analytics/BenchmarkingMetrics"
 import { DistributionCharts } from "@/components/analytics/DistributionCharts";
 import { QuickStatsBar } from "@/components/analytics/QuickStatsBar";
 import { PeriodSelector } from "@/components/dashboard/PeriodSelector";
+import { PeakAnalysis } from "@/components/analytics/PeakAnalysis";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -90,6 +91,47 @@ function AnalisisContent() {
   const [hourRange, setHourRange] = useState<HourRange>({ start: 0, end: 23 });
   const [hourFilterEnabled, setHourFilterEnabled] = useState(false);
   const [chartViewMode, setChartViewMode] = useState<'daily' | 'hourly' | 'individual'>('daily');
+  
+  // Applied filters state - only fetch data when user clicks "Aplicar"
+  const [appliedFilters, setAppliedFilters] = useState({
+    groupId: "all",
+    tagIds: [] as string[],
+    period: "7d",
+    customRange: null as { from: Date; to: Date } | null,
+    hourRange: { start: 0, end: 23 },
+    hourFilterEnabled: false,
+  });
+  const [filtersChanged, setFiltersChanged] = useState(false);
+  
+  // Track if filters changed
+  const checkFiltersChanged = () => {
+    const changed = 
+      selectedGroupId !== appliedFilters.groupId ||
+      JSON.stringify(selectedTagIds) !== JSON.stringify(appliedFilters.tagIds) ||
+      period !== appliedFilters.period ||
+      JSON.stringify(customRange) !== JSON.stringify(appliedFilters.customRange) ||
+      hourRange.start !== appliedFilters.hourRange.start ||
+      hourRange.end !== appliedFilters.hourRange.end ||
+      hourFilterEnabled !== appliedFilters.hourFilterEnabled;
+    setFiltersChanged(changed);
+  };
+  
+  // Watch for filter changes
+  useEffect(() => {
+    checkFiltersChanged();
+  }, [selectedGroupId, selectedTagIds, period, customRange, hourRange, hourFilterEnabled]);
+  
+  const applyFilters = () => {
+    setAppliedFilters({
+      groupId: selectedGroupId,
+      tagIds: [...selectedTagIds],
+      period,
+      customRange,
+      hourRange: { ...hourRange },
+      hourFilterEnabled,
+    });
+    setFiltersChanged(false);
+  };
 
   useEffect(() => {
     if (!user) return;
@@ -155,42 +197,42 @@ function AnalisisContent() {
   const filteredMonitorIds = useMemo(() => {
     let filtered = monitors;
 
-    if (selectedGroupId !== "all") {
-      filtered = filtered.filter((m) => m.group_id === selectedGroupId);
+    if (appliedFilters.groupId !== "all") {
+      filtered = filtered.filter((m) => m.group_id === appliedFilters.groupId);
     }
 
-    if (selectedTagIds.length > 0) {
+    if (appliedFilters.tagIds.length > 0) {
       filtered = filtered.filter((m) => {
         const monitorTagIds = monitorTags
           .filter((mt) => mt.monitor_id === m.id)
           .map((mt) => mt.tag_id);
-        return selectedTagIds.every((tagId) => monitorTagIds.includes(tagId));
+        return appliedFilters.tagIds.every((tagId) => monitorTagIds.includes(tagId));
       });
     }
 
     return filtered.map((m) => m.id);
-  }, [monitors, selectedGroupId, selectedTagIds, monitorTags]);
+  }, [monitors, appliedFilters.groupId, appliedFilters.tagIds, monitorTags]);
 
   // Filter readings by hour range
   const filteredReadingsByHour = useMemo(() => {
-    if (!hourFilterEnabled) return readings;
+    if (!appliedFilters.hourFilterEnabled) return readings;
     
     return readings.filter(r => {
       const hour = new Date(r.timestamp).getHours();
-      if (hourRange.start <= hourRange.end) {
-        return hour >= hourRange.start && hour <= hourRange.end;
+      if (appliedFilters.hourRange.start <= appliedFilters.hourRange.end) {
+        return hour >= appliedFilters.hourRange.start && hour <= appliedFilters.hourRange.end;
       } else {
-        return hour >= hourRange.start || hour <= hourRange.end;
+        return hour >= appliedFilters.hourRange.start || hour <= appliedFilters.hourRange.end;
       }
     });
-  }, [readings, hourRange, hourFilterEnabled]);
+  }, [readings, appliedFilters.hourRange, appliedFilters.hourFilterEnabled]);
 
   // Fetch readings when filters change
   useEffect(() => {
     if (!user || monitors.length === 0) return;
 
     const fetchReadings = async () => {
-      const { start, end } = getPeriodBounds(period, customRange);
+      const { start, end } = getPeriodBounds(appliedFilters.period, appliedFilters.customRange);
       const startDate = start.toISOString();
       const endDate = end.toISOString();
 
@@ -230,7 +272,7 @@ function AnalisisContent() {
     };
 
     fetchReadings();
-  }, [user, monitors, filteredMonitorIds, period, customRange, getPeriodBounds]);
+  }, [user, monitors, filteredMonitorIds, appliedFilters.period, appliedFilters.customRange, getPeriodBounds]);
 
   // Process chart data when readings, hour filter, or view mode changes
   useEffect(() => {
@@ -239,7 +281,7 @@ function AnalisisContent() {
     } else {
       setChartData([]);
     }
-  }, [filteredReadingsByHour, filteredMonitorIds, chartViewMode, period, customRange]);
+  }, [filteredReadingsByHour, filteredMonitorIds, chartViewMode, appliedFilters.period, appliedFilters.customRange]);
 
   const processChartData = (readingsData: Reading[], monitorIds: string[]) => {
     if (chartViewMode === 'hourly') {
@@ -303,7 +345,7 @@ function AnalisisContent() {
       setChartData(sorted);
     } else {
       // Daily aggregation (default)
-      const { start, end } = getPeriodBounds(period, customRange);
+      const { start, end } = getPeriodBounds(appliedFilters.period, appliedFilters.customRange);
       const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
       const dataByDate: Record<string, Record<string, number[]>> = {};
 
@@ -621,6 +663,17 @@ function AnalisisContent() {
                 </div>
               </PopoverContent>
             </Popover>
+
+            {/* Apply button */}
+            <Button
+              onClick={applyFilters}
+              disabled={!filtersChanged}
+              className="gap-2"
+              variant={filtersChanged ? "default" : "outline"}
+            >
+              <Check className="h-4 w-4" />
+              Aplicar
+            </Button>
           </div>
         </div>
 
@@ -754,6 +807,12 @@ function AnalisisContent() {
                 </CardContent>
               </Card>
             )}
+
+            {/* Peak Analysis - Hourly & Daily */}
+            <PeakAnalysis
+              readings={filteredReadingsByHour}
+              monitors={filteredMonitors}
+            />
 
             {/* Distribution Charts */}
             <DistributionCharts

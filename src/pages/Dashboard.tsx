@@ -12,7 +12,7 @@ import { MonitorRanking } from "@/components/dashboard/MonitorRanking";
 import { MarketTrendIndicator } from "@/components/dashboard/MarketTrendIndicator";
 import { EnhancedMonitorCard } from "@/components/dashboard/EnhancedMonitorCard";
 import { PeriodSelector } from "@/components/dashboard/PeriodSelector";
-import { Radio, TrendingUp, Activity, AlertTriangle, Loader2, X, Zap, BarChart3 } from "lucide-react";
+import { Radio, TrendingUp, Activity, AlertTriangle, Loader2, X, Zap, BarChart3, Check } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
