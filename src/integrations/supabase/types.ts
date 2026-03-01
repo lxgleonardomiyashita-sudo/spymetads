@@ -325,6 +325,72 @@ export type Database = {
           },
         ]
       }
+      super_group_monitors: {
+        Row: {
+          added_at: string
+          monitor_id: string
+          super_group_id: string
+        }
+        Insert: {
+          added_at?: string
+          monitor_id: string
+          super_group_id: string
+        }
+        Update: {
+          added_at?: string
+          monitor_id?: string
+          super_group_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "super_group_monitors_monitor_id_fkey"
+            columns: ["monitor_id"]
+            isOneToOne: false
+            referencedRelation: "monitors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "super_group_monitors_super_group_id_fkey"
+            columns: ["super_group_id"]
+            isOneToOne: false
+            referencedRelation: "super_groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      super_groups: {
+        Row: {
+          color: string | null
+          created_at: string
+          description: string | null
+          id: string
+          name: string
+          test_status: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          color?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          name: string
+          test_status?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          color?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          name?: string
+          test_status?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       tags: {
         Row: {
           color: string | null
