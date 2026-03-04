@@ -329,14 +329,43 @@ function DashboardContent() {
     fetchData();
   }, [user]);
 
-  // Filter monitors based on selection
+  // Applied filters state for Dashboard
+  const [appliedPeriod, setAppliedPeriod] = useState("7d");
+  const [appliedCustomRange, setAppliedCustomRange] = useState<{ from: Date; to: Date } | null>(null);
+  const [appliedGroupId, setAppliedGroupId] = useState<string | null>(null);
+  const [appliedMonitorId, setAppliedMonitorId] = useState<string | null>(null);
+  const [dashFiltersChanged, setDashFiltersChanged] = useState(false);
+
+  // Check if filters changed
+  const checkDashFiltersChanged = () => {
+    const changed = 
+      period !== appliedPeriod ||
+      JSON.stringify(customRange) !== JSON.stringify(appliedCustomRange) ||
+      selectedGroupId !== appliedGroupId ||
+      selectedMonitorId !== appliedMonitorId;
+    setDashFiltersChanged(changed);
+  };
+
+  useEffect(() => {
+    checkDashFiltersChanged();
+  }, [period, customRange, selectedGroupId, selectedMonitorId]);
+
+  const applyDashFilters = () => {
+    setAppliedPeriod(period);
+    setAppliedCustomRange(customRange);
+    setAppliedGroupId(selectedGroupId);
+    setAppliedMonitorId(selectedMonitorId);
+    setDashFiltersChanged(false);
+  };
+
+  // Filter monitors based on applied selection
   const filteredMonitors = useMemo(() => {
     return monitors.filter(m => {
-      if (selectedMonitorId) return m.id === selectedMonitorId;
-      if (selectedGroupId) return m.group_id === selectedGroupId;
+      if (appliedMonitorId) return m.id === appliedMonitorId;
+      if (appliedGroupId) return m.group_id === appliedGroupId;
       return true;
     });
-  }, [monitors, selectedMonitorId, selectedGroupId]);
+  }, [monitors, appliedMonitorId, appliedGroupId]);
 
   // Helper to get period bounds
   const getPeriodBounds = (periodValue: string, customRangeValue: { from: Date; to: Date } | null) => {
@@ -378,35 +407,32 @@ function DashboardContent() {
 
   // Filter readings based on selection and period
   const filteredReadings = useMemo(() => {
-    const { start, end } = getPeriodBounds(period, customRange);
+    const { start, end } = getPeriodBounds(appliedPeriod, appliedCustomRange);
 
     let readings = allReadingsRaw.filter(r => {
       const readingTime = new Date(r.timestamp).getTime();
       return readingTime >= start && readingTime <= end;
     });
 
-    // Filter by monitor
-    if (selectedMonitorId) {
-      readings = readings.filter(r => r.monitor_id === selectedMonitorId);
+    if (appliedMonitorId) {
+      readings = readings.filter(r => r.monitor_id === appliedMonitorId);
     }
 
-    // Filter by group
-    if (selectedGroupId) {
+    if (appliedGroupId) {
       const groupMonitorIds = monitors
-        .filter(m => m.group_id === selectedGroupId)
+        .filter(m => m.group_id === appliedGroupId)
         .map(m => m.id);
       readings = readings.filter(r => groupMonitorIds.includes(r.monitor_id));
     }
 
     return readings;
-  }, [allReadingsRaw, selectedMonitorId, selectedGroupId, monitors, period, customRange]);
+  }, [allReadingsRaw, appliedMonitorId, appliedGroupId, monitors, appliedPeriod, appliedCustomRange]);
 
   // Calculate filtered chart data (for single monitor view only)
   const filteredChartData = useMemo(() => {
-    // Only use aggregated chart when a single monitor is selected
-    if (!selectedMonitorId) return [];
+    if (!appliedMonitorId) return [];
     
-    const isLongPeriod = ['3d', '7d', '14d', '30d', '60d', '90d', 'custom'].includes(period);
+    const isLongPeriod = ['3d', '7d', '14d', '30d', '60d', '90d', 'custom'].includes(appliedPeriod);
     const dataByKey: Record<string, number[]> = {};
 
     filteredReadings.forEach((r) => {
@@ -425,7 +451,6 @@ function DashboardContent() {
         value: Math.round(values.reduce((a, b) => a + b, 0) / values.length),
       }))
       .sort((a, b) => {
-        // Sort by date for long periods, by hour for short
         if (isLongPeriod) {
           const [dayA, monthA] = a.time.split('/').map(Number);
           const [dayB, monthB] = b.time.split('/').map(Number);
@@ -433,17 +458,15 @@ function DashboardContent() {
         }
         return a.time.localeCompare(b.time);
       });
-  }, [filteredReadings, period, selectedMonitorId]);
+  }, [filteredReadings, appliedPeriod, appliedMonitorId]);
 
   // Calculate multi-line chart data for multiple monitors
   const multiMonitorChartSeries = useMemo(() => {
-    // Only show multi-line when NOT a single monitor selected and there are monitors to show
-    if (selectedMonitorId || filteredMonitors.length === 0) return [];
+    if (appliedMonitorId || filteredMonitors.length === 0) return [];
 
-    const { start, end } = getPeriodBounds(period, customRange);
-    const isLongPeriod = ['3d', '7d', '14d', '30d', '60d', '90d', 'custom'].includes(period);
+    const { start, end } = getPeriodBounds(appliedPeriod, appliedCustomRange);
+    const isLongPeriod = ['3d', '7d', '14d', '30d', '60d', '90d', 'custom'].includes(appliedPeriod);
 
-    // Get top 10 monitors by ads active in last 7 days
     const now = Date.now();
     const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
     const monitorAdsIn7d: Record<string, number> = {};
@@ -458,12 +481,10 @@ function DashboardContent() {
       monitorAdsIn7d[m.id] = avgAds;
     });
 
-    // Sort by average ads and take top 10
     const top10Monitors = [...filteredMonitors]
       .sort((a, b) => (monitorAdsIn7d[b.id] || 0) - (monitorAdsIn7d[a.id] || 0))
       .slice(0, 10);
 
-    // Filter readings by period
     const periodReadings = allReadingsRaw.filter(r => {
       const readingTime = new Date(r.timestamp).getTime();
       return readingTime >= start && readingTime <= end;
@@ -504,7 +525,7 @@ function DashboardContent() {
         data,
       };
     });
-  }, [selectedMonitorId, filteredMonitors, allReadingsRaw, period, customRange]);
+  }, [appliedMonitorId, filteredMonitors, allReadingsRaw, appliedPeriod, appliedCustomRange]);
 
   // Get filtered stats
   const filteredStats = useMemo(() => ({
@@ -727,22 +748,15 @@ function DashboardContent() {
   const comparisonChartSeries = useMemo(() => {
     if (!comparisonMode || comparisonSelectedIds.length === 0) return [];
 
-    const periodMs: Record<string, number> = {
-      '24h': 24 * 60 * 60 * 1000,
-      '48h': 48 * 60 * 60 * 1000,
-      '7d': 7 * 24 * 60 * 60 * 1000,
-      '14d': 14 * 24 * 60 * 60 * 1000,
-      '30d': 30 * 24 * 60 * 60 * 1000,
-    };
-    const now = Date.now();
-    const maxAge = periodMs[period] || periodMs['24h'];
-    const isLongPeriod = period === '7d' || period === '14d' || period === '30d';
+    const { start, end } = getPeriodBounds(appliedPeriod, appliedCustomRange);
+    const isLongPeriod = ['3d', '7d', '14d', '30d', '60d', '90d', 'custom'].includes(appliedPeriod);
 
-    // Filter readings by period
     const periodReadings = allReadingsRaw.filter(r => {
-      const age = now - new Date(r.timestamp).getTime();
-      return age <= maxAge;
+      const readingTime = new Date(r.timestamp).getTime();
+      return readingTime >= start && readingTime <= end;
     });
+
+    const compReadings = periodReadings;
 
     if (comparisonGroupByMode === 'group') {
       return comparisonSelectedIds.map((groupId, index) => {
@@ -750,7 +764,7 @@ function DashboardContent() {
         if (!group) return null;
 
         const groupMonitorIds = new Set(monitors.filter(m => m.group_id === groupId).map(m => m.id));
-        const groupReadings = periodReadings.filter(r => groupMonitorIds.has(r.monitor_id));
+        const groupReadings = compReadings.filter(r => groupMonitorIds.has(r.monitor_id));
 
         // Aggregate by time
         const dataByTime: Record<string, number[]> = {};
@@ -795,7 +809,7 @@ function DashboardContent() {
             .filter(m => m.tags.some((t: any) => t?.id === tagId))
             .map(m => m.id)
         );
-        const tagReadings = periodReadings.filter(r => tagMonitorIds.has(r.monitor_id));
+        const tagReadings = compReadings.filter(r => tagMonitorIds.has(r.monitor_id));
 
         // Aggregate by time
         const dataByTime: Record<string, number[]> = {};
@@ -830,7 +844,7 @@ function DashboardContent() {
         };
       }).filter(Boolean) as any[];
     }
-  }, [comparisonMode, comparisonSelectedIds, comparisonGroupByMode, allReadingsRaw, period, monitors, groups, tags]);
+  }, [comparisonMode, comparisonSelectedIds, comparisonGroupByMode, allReadingsRaw, appliedPeriod, appliedCustomRange, monitors, groups, tags]);
 
   // Get top performer
   const topPerformer = monitors.reduce((top, m) => {
@@ -957,6 +971,17 @@ function DashboardContent() {
                       <X className="h-4 w-4" />
                     </Button>
                   )}
+                  {/* Apply button */}
+                  <Button
+                    onClick={applyDashFilters}
+                    disabled={!dashFiltersChanged}
+                    className="gap-2"
+                    variant={dashFiltersChanged ? "default" : "outline"}
+                    size="sm"
+                  >
+                    <Check className="h-4 w-4" />
+                    Aplicar
+                  </Button>
                 </>
               )}
             </div>
