@@ -1167,6 +1167,9 @@ function DashboardContent() {
             </p>
           </div>
         )}
+        </div>
+
+        {/* Comparison Sidebar */}
         <ComparisonSidebar
           isOpen={comparisonSidebarOpen}
           onClose={() => setComparisonSidebarOpen(false)}
