@@ -884,12 +884,12 @@ function DashboardContent() {
     <AppLayout>
       <div className="flex h-full">
         {/* Main Content */}
-        <div className={`flex-1 space-y-4 fade-in ${comparisonSidebarOpen ? 'pr-0' : ''}`}>
+        <div className={`flex-1 space-y-5 fade-in ${comparisonSidebarOpen ? 'pr-0' : ''}`}>
           {/* Header with Filters */}
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
               <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
-              <p className="text-muted-foreground mt-1">
+              <p className="text-sm text-muted-foreground">
                 {comparisonMode
                   ? `Comparando ${comparisonSelectedIds.length} ${comparisonGroupByMode === 'group' ? 'grupos' : 'tags'}`
                   : selectedMonitor
@@ -899,7 +899,7 @@ function DashboardContent() {
                   : 'Visão geral dos seus monitores de anúncios'}
               </p>
             </div>
-            <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-2 flex-wrap">
               <PeriodSelector 
                 value={period} 
                 onChange={setPeriod}
@@ -907,12 +907,11 @@ function DashboardContent() {
                 onCustomRangeChange={setCustomRange}
               />
               
-              {/* Comparison Toggle Button */}
               <Button
                 variant={comparisonMode ? 'default' : 'outline'}
                 size="sm"
                 onClick={toggleComparisonMode}
-                className="gap-2"
+                className="gap-1.5"
               >
                 <BarChart3 className="h-4 w-4" />
                 Comparativo
@@ -931,11 +930,11 @@ function DashboardContent() {
                       }
                     }}
                   >
-                    <SelectTrigger className="w-[160px] bg-card border-border">
+                    <SelectTrigger className="w-[140px] bg-card border-border h-9 text-sm">
                       <SelectValue placeholder="Grupo" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all-groups">Todos os grupos</SelectItem>
+                      <SelectItem value="all-groups">Todos</SelectItem>
                       {groups.map(group => (
                         <SelectItem key={group.id} value={group.id}>
                           {group.name}
@@ -954,11 +953,11 @@ function DashboardContent() {
                       }
                     }}
                   >
-                    <SelectTrigger className="w-[180px] bg-card border-border">
+                    <SelectTrigger className="w-[160px] bg-card border-border h-9 text-sm">
                       <SelectValue placeholder="Monitor" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all-monitors">Todos os monitores</SelectItem>
+                      <SelectItem value="all-monitors">Todos</SelectItem>
                       {monitors.map(monitor => (
                         <SelectItem key={monitor.id} value={monitor.id}>
                           {monitor.name}
@@ -967,15 +966,14 @@ function DashboardContent() {
                     </SelectContent>
                   </Select>
                   {(selectedMonitorId || selectedGroupId) && (
-                    <Button variant="ghost" size="icon" onClick={clearFilters}>
+                    <Button variant="ghost" size="icon" className="h-9 w-9" onClick={clearFilters}>
                       <X className="h-4 w-4" />
                     </Button>
                   )}
-                  {/* Apply button */}
                   <Button
                     onClick={applyDashFilters}
                     disabled={!dashFiltersChanged}
-                    className="gap-2"
+                    className="gap-1.5 h-9"
                     variant={dashFiltersChanged ? "default" : "outline"}
                     size="sm"
                   >
@@ -987,12 +985,12 @@ function DashboardContent() {
             </div>
           </div>
 
-        {/* Metric Cards - Row 1 */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* KPI Row - Compact */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <MetricCard
             title="Monitores Ativos"
             value={filteredStats.activeMonitors.toString()}
-            subtitle={`de ${filteredStats.totalMonitors} totais`}
+            subtitle={`de ${filteredStats.totalMonitors}`}
             icon={<Radio className="h-5 w-5" />}
           />
           <MetricCard
@@ -1004,14 +1002,9 @@ function DashboardContent() {
           <MetricCard
             title="Leituras Hoje"
             value={stats.readingsToday.toString()}
-            subtitle={`${stats.successRate}% de sucesso`}
+            subtitle={`${stats.successRate}% sucesso`}
             icon={<Activity className="h-5 w-5" />}
           />
-        </div>
-
-        {/* Market Overview Row */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {/* Market Trend Indicator */}
           <MarketTrendIndicator 
             trend={marketTrend.trend} 
             percentage={marketTrend.percentage} 
