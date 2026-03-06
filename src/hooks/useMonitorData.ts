@@ -96,6 +96,8 @@ export function useMonitorData(options: UseMonitorDataOptions = {}) {
         stats: statsMap[m.id] || { max_ads: 0, total_readings: 0 },
         website_url: m.website_url || null,
         test_status: (m.test_status as TestStatus) || null,
+        extra_ad_library_urls: (m as any).extra_ad_library_urls || [],
+        extra_website_urls: (m as any).extra_website_urls || [],
       }));
 
       setMonitors(transformedMonitors);
