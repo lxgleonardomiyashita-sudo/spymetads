@@ -170,6 +170,8 @@ export type Database = {
         Row: {
           ad_library_url: string
           created_at: string
+          extra_ad_library_urls: string[] | null
+          extra_website_urls: string[] | null
           group_id: string | null
           id: string
           is_active: boolean
@@ -184,6 +186,8 @@ export type Database = {
         Insert: {
           ad_library_url: string
           created_at?: string
+          extra_ad_library_urls?: string[] | null
+          extra_website_urls?: string[] | null
           group_id?: string | null
           id?: string
           is_active?: boolean
@@ -198,6 +202,8 @@ export type Database = {
         Update: {
           ad_library_url?: string
           created_at?: string
+          extra_ad_library_urls?: string[] | null
+          extra_website_urls?: string[] | null
           group_id?: string | null
           id?: string
           is_active?: boolean
