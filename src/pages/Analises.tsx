@@ -59,6 +59,8 @@ interface Monitor {
   group_id: string | null;
 }
 
+type MonitorSelectionMode = 'all' | 'specific';
+
 interface Reading {
   monitor_id: string;
   ads_active_count: number;
@@ -92,6 +94,10 @@ function AnalisisContent() {
   const [hourFilterEnabled, setHourFilterEnabled] = useState(false);
   const [chartViewMode, setChartViewMode] = useState<'daily' | 'hourly' | 'individual'>('daily');
   
+  // Monitor selection mode
+  const [monitorSelectionMode, setMonitorSelectionMode] = useState<MonitorSelectionMode>('all');
+  const [selectedMonitorIds, setSelectedMonitorIds] = useState<string[]>([]);
+  
   // Applied filters state - only fetch data when user clicks "Aplicar"
   const [appliedFilters, setAppliedFilters] = useState({
     groupId: "all",
@@ -100,6 +106,8 @@ function AnalisisContent() {
     customRange: null as { from: Date; to: Date } | null,
     hourRange: { start: 0, end: 23 },
     hourFilterEnabled: false,
+    monitorSelectionMode: 'all' as MonitorSelectionMode,
+    selectedMonitorIds: [] as string[],
   });
   const [filtersChanged, setFiltersChanged] = useState(false);
   
@@ -112,14 +120,16 @@ function AnalisisContent() {
       JSON.stringify(customRange) !== JSON.stringify(appliedFilters.customRange) ||
       hourRange.start !== appliedFilters.hourRange.start ||
       hourRange.end !== appliedFilters.hourRange.end ||
-      hourFilterEnabled !== appliedFilters.hourFilterEnabled;
+      hourFilterEnabled !== appliedFilters.hourFilterEnabled ||
+      monitorSelectionMode !== appliedFilters.monitorSelectionMode ||
+      JSON.stringify(selectedMonitorIds) !== JSON.stringify(appliedFilters.selectedMonitorIds);
     setFiltersChanged(changed);
   };
   
   // Watch for filter changes
   useEffect(() => {
     checkFiltersChanged();
-  }, [selectedGroupId, selectedTagIds, period, customRange, hourRange, hourFilterEnabled]);
+  }, [selectedGroupId, selectedTagIds, period, customRange, hourRange, hourFilterEnabled, monitorSelectionMode, selectedMonitorIds]);
   
   const applyFilters = () => {
     setAppliedFilters({
@@ -129,6 +139,8 @@ function AnalisisContent() {
       customRange,
       hourRange: { ...hourRange },
       hourFilterEnabled,
+      monitorSelectionMode,
+      selectedMonitorIds: [...selectedMonitorIds],
     });
     setFiltersChanged(false);
   };
@@ -193,25 +205,30 @@ function AnalisisContent() {
     return { start: startOfDay(subDays(now, days)), end: endOfDay(now) };
   }, []);
 
-  // Filter monitors by group and tags
+  // Filter monitors by group, tags, and specific selection
   const filteredMonitorIds = useMemo(() => {
     let filtered = monitors;
 
-    if (appliedFilters.groupId !== "all") {
-      filtered = filtered.filter((m) => m.group_id === appliedFilters.groupId);
-    }
+    // If specific monitors are selected, use only those
+    if (appliedFilters.monitorSelectionMode === 'specific' && appliedFilters.selectedMonitorIds.length > 0) {
+      filtered = filtered.filter((m) => appliedFilters.selectedMonitorIds.includes(m.id));
+    } else {
+      if (appliedFilters.groupId !== "all") {
+        filtered = filtered.filter((m) => m.group_id === appliedFilters.groupId);
+      }
 
-    if (appliedFilters.tagIds.length > 0) {
-      filtered = filtered.filter((m) => {
-        const monitorTagIds = monitorTags
-          .filter((mt) => mt.monitor_id === m.id)
-          .map((mt) => mt.tag_id);
-        return appliedFilters.tagIds.every((tagId) => monitorTagIds.includes(tagId));
-      });
+      if (appliedFilters.tagIds.length > 0) {
+        filtered = filtered.filter((m) => {
+          const monitorTagIds = monitorTags
+            .filter((mt) => mt.monitor_id === m.id)
+            .map((mt) => mt.tag_id);
+          return appliedFilters.tagIds.every((tagId) => monitorTagIds.includes(tagId));
+        });
+      }
     }
 
     return filtered.map((m) => m.id);
-  }, [monitors, appliedFilters.groupId, appliedFilters.tagIds, monitorTags]);
+  }, [monitors, appliedFilters.groupId, appliedFilters.tagIds, appliedFilters.monitorSelectionMode, appliedFilters.selectedMonitorIds, monitorTags]);
 
   // Filter readings by hour range
   const filteredReadingsByHour = useMemo(() => {
