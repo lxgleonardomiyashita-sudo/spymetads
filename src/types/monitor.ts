@@ -47,6 +47,8 @@ export interface Monitor {
   stats?: MonitorStats;
   website_url?: string | null;
   test_status?: TestStatus;
+  extra_ad_library_urls?: string[];
+  extra_website_urls?: string[];
 }
 
 export interface SavedMonitor {

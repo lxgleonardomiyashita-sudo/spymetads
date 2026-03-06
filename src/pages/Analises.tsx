@@ -59,6 +59,8 @@ interface Monitor {
   group_id: string | null;
 }
 
+type MonitorSelectionMode = 'all' | 'specific';
+
 interface Reading {
   monitor_id: string;
   ads_active_count: number;
@@ -92,6 +94,10 @@ function AnalisisContent() {
   const [hourFilterEnabled, setHourFilterEnabled] = useState(false);
   const [chartViewMode, setChartViewMode] = useState<'daily' | 'hourly' | 'individual'>('daily');
   
+  // Monitor selection mode
+  const [monitorSelectionMode, setMonitorSelectionMode] = useState<MonitorSelectionMode>('all');
+  const [selectedMonitorIds, setSelectedMonitorIds] = useState<string[]>([]);
+  
   // Applied filters state - only fetch data when user clicks "Aplicar"
   const [appliedFilters, setAppliedFilters] = useState({
     groupId: "all",
@@ -100,6 +106,8 @@ function AnalisisContent() {
     customRange: null as { from: Date; to: Date } | null,
     hourRange: { start: 0, end: 23 },
     hourFilterEnabled: false,
+    monitorSelectionMode: 'all' as MonitorSelectionMode,
+    selectedMonitorIds: [] as string[],
   });
   const [filtersChanged, setFiltersChanged] = useState(false);
   
@@ -112,14 +120,16 @@ function AnalisisContent() {
       JSON.stringify(customRange) !== JSON.stringify(appliedFilters.customRange) ||
       hourRange.start !== appliedFilters.hourRange.start ||
       hourRange.end !== appliedFilters.hourRange.end ||
-      hourFilterEnabled !== appliedFilters.hourFilterEnabled;
+      hourFilterEnabled !== appliedFilters.hourFilterEnabled ||
+      monitorSelectionMode !== appliedFilters.monitorSelectionMode ||
+      JSON.stringify(selectedMonitorIds) !== JSON.stringify(appliedFilters.selectedMonitorIds);
     setFiltersChanged(changed);
   };
   
   // Watch for filter changes
   useEffect(() => {
     checkFiltersChanged();
-  }, [selectedGroupId, selectedTagIds, period, customRange, hourRange, hourFilterEnabled]);
+  }, [selectedGroupId, selectedTagIds, period, customRange, hourRange, hourFilterEnabled, monitorSelectionMode, selectedMonitorIds]);
   
   const applyFilters = () => {
     setAppliedFilters({
@@ -129,6 +139,8 @@ function AnalisisContent() {
       customRange,
       hourRange: { ...hourRange },
       hourFilterEnabled,
+      monitorSelectionMode,
+      selectedMonitorIds: [...selectedMonitorIds],
     });
     setFiltersChanged(false);
   };
@@ -193,25 +205,30 @@ function AnalisisContent() {
     return { start: startOfDay(subDays(now, days)), end: endOfDay(now) };
   }, []);
 
-  // Filter monitors by group and tags
+  // Filter monitors by group, tags, and specific selection
   const filteredMonitorIds = useMemo(() => {
     let filtered = monitors;
 
-    if (appliedFilters.groupId !== "all") {
-      filtered = filtered.filter((m) => m.group_id === appliedFilters.groupId);
-    }
+    // If specific monitors are selected, use only those
+    if (appliedFilters.monitorSelectionMode === 'specific' && appliedFilters.selectedMonitorIds.length > 0) {
+      filtered = filtered.filter((m) => appliedFilters.selectedMonitorIds.includes(m.id));
+    } else {
+      if (appliedFilters.groupId !== "all") {
+        filtered = filtered.filter((m) => m.group_id === appliedFilters.groupId);
+      }
 
-    if (appliedFilters.tagIds.length > 0) {
-      filtered = filtered.filter((m) => {
-        const monitorTagIds = monitorTags
-          .filter((mt) => mt.monitor_id === m.id)
-          .map((mt) => mt.tag_id);
-        return appliedFilters.tagIds.every((tagId) => monitorTagIds.includes(tagId));
-      });
+      if (appliedFilters.tagIds.length > 0) {
+        filtered = filtered.filter((m) => {
+          const monitorTagIds = monitorTags
+            .filter((mt) => mt.monitor_id === m.id)
+            .map((mt) => mt.tag_id);
+          return appliedFilters.tagIds.every((tagId) => monitorTagIds.includes(tagId));
+        });
+      }
     }
 
     return filtered.map((m) => m.id);
-  }, [monitors, appliedFilters.groupId, appliedFilters.tagIds, monitorTags]);
+  }, [monitors, appliedFilters.groupId, appliedFilters.tagIds, appliedFilters.monitorSelectionMode, appliedFilters.selectedMonitorIds, monitorTags]);
 
   // Filter readings by hour range
   const filteredReadingsByHour = useMemo(() => {
@@ -532,7 +549,85 @@ function AnalisisContent() {
               Visualize tendências, benchmarking e dados históricos
             </p>
           </div>
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-wrap gap-3 items-center">
+            {/* Monitor Selection Mode */}
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant={monitorSelectionMode === 'specific' ? "default" : "outline"} className="gap-2">
+                  <Activity className="h-4 w-4" />
+                  {monitorSelectionMode === 'specific' 
+                    ? `${selectedMonitorIds.length} monitor${selectedMonitorIds.length !== 1 ? 'es' : ''}`
+                    : "Monitores"
+                  }
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-80 max-h-[400px] overflow-y-auto" align="start">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-medium">Selecionar Monitores</Label>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        if (monitorSelectionMode === 'specific') {
+                          setMonitorSelectionMode('all');
+                          setSelectedMonitorIds([]);
+                        } else {
+                          setMonitorSelectionMode('specific');
+                        }
+                      }}
+                    >
+                      {monitorSelectionMode === 'specific' ? "Todos" : "Escolher"}
+                    </Button>
+                  </div>
+                  
+                  {monitorSelectionMode === 'specific' && (
+                    <div className="space-y-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="w-full justify-start text-xs"
+                        onClick={() => {
+                          if (selectedMonitorIds.length === monitors.length) {
+                            setSelectedMonitorIds([]);
+                          } else {
+                            setSelectedMonitorIds(monitors.map(m => m.id));
+                          }
+                        }}
+                      >
+                        {selectedMonitorIds.length === monitors.length ? "Desmarcar todos" : "Selecionar todos"}
+                      </Button>
+                      {monitors.map((m) => (
+                        <label
+                          key={m.id}
+                          className="flex items-center gap-2 p-2 rounded hover:bg-muted cursor-pointer text-sm"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedMonitorIds.includes(m.id)}
+                            onChange={() => {
+                              setSelectedMonitorIds(prev => 
+                                prev.includes(m.id) 
+                                  ? prev.filter(id => id !== m.id)
+                                  : [...prev, m.id]
+                              );
+                            }}
+                            className="rounded border-border"
+                          />
+                          <span className="truncate">{m.name}</span>
+                          {m.group_id && (
+                            <span className="text-xs text-muted-foreground ml-auto">
+                              {groups.find(g => g.id === m.group_id)?.name}
+                            </span>
+                          )}
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </PopoverContent>
+            </Popover>
+
             <Select value={selectedGroupId} onValueChange={setSelectedGroupId}>
               <SelectTrigger className="w-[180px] bg-card border-border">
                 <SelectValue placeholder="Filtrar por grupo" />
@@ -629,32 +724,16 @@ function AnalisisContent() {
                       </div>
                       
                       <div className="flex flex-wrap gap-2">
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          onClick={() => setHourRange({ start: 6, end: 12 })}
-                        >
+                        <Button variant="outline" size="sm" onClick={() => setHourRange({ start: 6, end: 12 })}>
                           Manhã (6-12h)
                         </Button>
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          onClick={() => setHourRange({ start: 12, end: 18 })}
-                        >
+                        <Button variant="outline" size="sm" onClick={() => setHourRange({ start: 12, end: 18 })}>
                           Tarde (12-18h)
                         </Button>
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          onClick={() => setHourRange({ start: 18, end: 23 })}
-                        >
+                        <Button variant="outline" size="sm" onClick={() => setHourRange({ start: 18, end: 23 })}>
                           Noite (18-23h)
                         </Button>
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          onClick={() => setHourRange({ start: 9, end: 18 })}
-                        >
+                        <Button variant="outline" size="sm" onClick={() => setHourRange({ start: 9, end: 18 })}>
                           Comercial (9-18h)
                         </Button>
                       </div>

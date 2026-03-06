@@ -884,12 +884,12 @@ function DashboardContent() {
     <AppLayout>
       <div className="flex h-full">
         {/* Main Content */}
-        <div className={`flex-1 space-y-4 fade-in ${comparisonSidebarOpen ? 'pr-0' : ''}`}>
+        <div className={`flex-1 space-y-5 fade-in ${comparisonSidebarOpen ? 'pr-0' : ''}`}>
           {/* Header with Filters */}
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div>
               <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
-              <p className="text-muted-foreground mt-1">
+              <p className="text-sm text-muted-foreground">
                 {comparisonMode
                   ? `Comparando ${comparisonSelectedIds.length} ${comparisonGroupByMode === 'group' ? 'grupos' : 'tags'}`
                   : selectedMonitor
@@ -899,7 +899,7 @@ function DashboardContent() {
                   : 'Visão geral dos seus monitores de anúncios'}
               </p>
             </div>
-            <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-2 flex-wrap">
               <PeriodSelector 
                 value={period} 
                 onChange={setPeriod}
@@ -907,12 +907,11 @@ function DashboardContent() {
                 onCustomRangeChange={setCustomRange}
               />
               
-              {/* Comparison Toggle Button */}
               <Button
                 variant={comparisonMode ? 'default' : 'outline'}
                 size="sm"
                 onClick={toggleComparisonMode}
-                className="gap-2"
+                className="gap-1.5"
               >
                 <BarChart3 className="h-4 w-4" />
                 Comparativo
@@ -931,11 +930,11 @@ function DashboardContent() {
                       }
                     }}
                   >
-                    <SelectTrigger className="w-[160px] bg-card border-border">
+                    <SelectTrigger className="w-[140px] bg-card border-border h-9 text-sm">
                       <SelectValue placeholder="Grupo" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all-groups">Todos os grupos</SelectItem>
+                      <SelectItem value="all-groups">Todos</SelectItem>
                       {groups.map(group => (
                         <SelectItem key={group.id} value={group.id}>
                           {group.name}
@@ -954,11 +953,11 @@ function DashboardContent() {
                       }
                     }}
                   >
-                    <SelectTrigger className="w-[180px] bg-card border-border">
+                    <SelectTrigger className="w-[160px] bg-card border-border h-9 text-sm">
                       <SelectValue placeholder="Monitor" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all-monitors">Todos os monitores</SelectItem>
+                      <SelectItem value="all-monitors">Todos</SelectItem>
                       {monitors.map(monitor => (
                         <SelectItem key={monitor.id} value={monitor.id}>
                           {monitor.name}
@@ -967,15 +966,14 @@ function DashboardContent() {
                     </SelectContent>
                   </Select>
                   {(selectedMonitorId || selectedGroupId) && (
-                    <Button variant="ghost" size="icon" onClick={clearFilters}>
+                    <Button variant="ghost" size="icon" className="h-9 w-9" onClick={clearFilters}>
                       <X className="h-4 w-4" />
                     </Button>
                   )}
-                  {/* Apply button */}
                   <Button
                     onClick={applyDashFilters}
                     disabled={!dashFiltersChanged}
-                    className="gap-2"
+                    className="gap-1.5 h-9"
                     variant={dashFiltersChanged ? "default" : "outline"}
                     size="sm"
                   >
@@ -987,12 +985,12 @@ function DashboardContent() {
             </div>
           </div>
 
-        {/* Metric Cards - Row 1 */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* KPI Row - Compact */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <MetricCard
             title="Monitores Ativos"
             value={filteredStats.activeMonitors.toString()}
-            subtitle={`de ${filteredStats.totalMonitors} totais`}
+            subtitle={`de ${filteredStats.totalMonitors}`}
             icon={<Radio className="h-5 w-5" />}
           />
           <MetricCard
@@ -1004,52 +1002,108 @@ function DashboardContent() {
           <MetricCard
             title="Leituras Hoje"
             value={stats.readingsToday.toString()}
-            subtitle={`${stats.successRate}% de sucesso`}
+            subtitle={`${stats.successRate}% sucesso`}
             icon={<Activity className="h-5 w-5" />}
           />
-        </div>
-
-        {/* Market Overview Row */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {/* Market Trend Indicator */}
           <MarketTrendIndicator 
             trend={marketTrend.trend} 
             percentage={marketTrend.percentage} 
             period="24h"
           />
 
-          {/* Top Performer Card */}
+          {/* Top Performer + Biggest Mover - inline */}
           {topPerformer && (
-            <div className="metric-card">
-              <div className="flex items-center gap-2 mb-2">
-                <Zap className="h-4 w-4 text-warning" />
-                <span className="text-sm font-medium text-muted-foreground">Maior Volume</span>
+            <div className="metric-card p-3">
+              <div className="flex items-center gap-2 mb-1">
+                <Zap className="h-3.5 w-3.5 text-warning" />
+                <span className="text-xs font-medium text-muted-foreground">Maior Volume</span>
               </div>
-              <p className="text-lg font-bold text-foreground truncate">{topPerformer.name}</p>
-              <p className="text-2xl font-bold text-primary">
+              <p className="text-sm font-bold text-foreground truncate">{topPerformer.name}</p>
+              <p className="text-xl font-bold text-primary">
                 {topPerformer.latest_reading?.ads_active_count.toLocaleString('pt-BR')} ads
               </p>
             </div>
           )}
-
-          {/* Biggest Mover Card */}
           {biggestMover && biggestMover.change24h !== 0 && (
-            <div className="metric-card">
-              <div className="flex items-center gap-2 mb-2">
-                <AlertTriangle className="h-4 w-4 text-warning" />
-                <span className="text-sm font-medium text-muted-foreground">Maior Movimento</span>
+            <div className="metric-card p-3">
+              <div className="flex items-center gap-2 mb-1">
+                <AlertTriangle className="h-3.5 w-3.5 text-warning" />
+                <span className="text-xs font-medium text-muted-foreground">Maior Movimento</span>
               </div>
-              <p className="text-lg font-bold text-foreground truncate">{biggestMover.name}</p>
-              <p className={`text-2xl font-bold ${biggestMover.change24h > 0 ? 'text-success' : 'text-destructive'}`}>
+              <p className="text-sm font-bold text-foreground truncate">{biggestMover.name}</p>
+              <p className={`text-xl font-bold ${biggestMover.change24h > 0 ? 'text-success' : 'text-destructive'}`}>
                 {biggestMover.change24h > 0 ? '+' : ''}{biggestMover.change24h}%
               </p>
             </div>
           )}
         </div>
 
-        {/* Quick Insights + Market Pulse Row */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {/* Quick Insights */}
+        {/* Monitor Status Cards */}
+        {!comparisonMode && filteredMonitors.length > 0 && (
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-base font-semibold text-foreground">
+                Status dos Monitores
+                {selectedGroup && <span className="text-muted-foreground font-normal ml-2">({selectedGroup.name})</span>}
+              </h2>
+              {selectedMonitorId && (
+                <button
+                  onClick={() => setSelectedMonitorId(null)}
+                  className="text-sm text-primary hover:text-primary/80 font-medium transition-colors"
+                >
+                  Ver todos
+                </button>
+              )}
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+              {filteredMonitors.slice(0, 8).map((monitor) => (
+                <EnhancedMonitorCard
+                  key={monitor.id}
+                  id={monitor.id}
+                  name={monitor.name}
+                  url={monitor.ad_library_url}
+                  currentCount={monitor.latest_reading?.ads_active_count || 0}
+                  trend={monitor.change24h}
+                  sparklineData={monitor.sparklineData}
+                  tags={monitor.tags}
+                  status={monitor.is_active ? 'active' : 'inactive'}
+                  isSelected={selectedMonitorId === monitor.id}
+                  onSelect={() => setSelectedMonitorId(monitor.id)}
+                  onViewCreatives={() => handleViewCreatives(monitor.ad_library_url)}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Chart Section */}
+        {comparisonMode ? (
+          <MultiLineChart
+            series={comparisonChartSeries}
+            title={`Comparativo por ${comparisonGroupByMode === 'group' ? 'Grupo' : 'Tag'}`}
+          />
+        ) : selectedMonitorId && filteredChartData.length > 0 ? (
+          <ActiveAdsLineChart
+            data={filteredChartData}
+            title={`Anúncios Ativos - ${selectedMonitor?.name}`}
+          />
+        ) : multiMonitorChartSeries.length > 0 ? (
+          <MultiLineChart
+            series={multiMonitorChartSeries}
+            title={selectedGroup
+              ? `Grupo ${selectedGroup.name} (Top ${Math.min(multiMonitorChartSeries.length, 10)})`
+              : `Top ${Math.min(multiMonitorChartSeries.length, 10)} monitores`}
+          />
+        ) : (
+          <div className="metric-card flex items-center justify-center h-[300px]">
+            <p className="text-muted-foreground">
+              Nenhum dado de leitura disponível ainda
+            </p>
+          </div>
+        )}
+
+        {/* Insights + Rankings + Pulse */}
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
           <Card className="lg:col-span-2">
             <CardHeader className="pb-3">
               <CardTitle className="text-base font-semibold flex items-center gap-2">
@@ -1062,7 +1116,6 @@ function DashboardContent() {
             </CardContent>
           </Card>
 
-          {/* Market Pulse */}
           <MarketPulse 
             temperature={marketPulse.temperature}
             trend={marketPulse.trend}
@@ -1071,16 +1124,19 @@ function DashboardContent() {
             selectedGroupId={pulseGroupId}
             onGroupChange={setPulseGroupId}
           />
+
+          <div className="space-y-3">
+            <MonitorRanking 
+              title="Top por Volume"
+              type="top"
+              monitors={rankings.topByAds}
+              valueLabel="ads"
+            />
+          </div>
         </div>
 
         {/* Rankings Row */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <MonitorRanking 
-            title="Top por Volume"
-            type="top"
-            monitors={rankings.topByAds}
-            valueLabel="ads"
-          />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <MonitorRanking 
             title="Mais Cresceram (24h)"
             type="rising"
@@ -1095,86 +1151,22 @@ function DashboardContent() {
           />
         </div>
 
-          {/* Monitor Status Cards */}
-          {!comparisonMode && filteredMonitors.length > 0 && (
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <h2 className="text-lg font-semibold text-foreground">
-                  Status dos Monitores
-                  {selectedGroup && <span className="text-muted-foreground font-normal ml-2">({selectedGroup.name})</span>}
-                </h2>
-                {selectedMonitorId && (
-                  <button
-                    onClick={() => setSelectedMonitorId(null)}
-                    className="text-sm text-primary hover:text-primary/80 font-medium transition-colors"
-                  >
-                    Ver todos
-                  </button>
-                )}
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-                {filteredMonitors.slice(0, 8).map((monitor) => (
-                  <EnhancedMonitorCard
-                    key={monitor.id}
-                    id={monitor.id}
-                    name={monitor.name}
-                    url={monitor.ad_library_url}
-                    currentCount={monitor.latest_reading?.ads_active_count || 0}
-                    trend={monitor.change24h}
-                    sparklineData={monitor.sparklineData}
-                    tags={monitor.tags}
-                    status={monitor.is_active ? 'active' : 'inactive'}
-                    isSelected={selectedMonitorId === monitor.id}
-                    onSelect={() => setSelectedMonitorId(monitor.id)}
-                    onViewCreatives={() => handleViewCreatives(monitor.ad_library_url)}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
+        {/* Recent Readings */}
+        {!comparisonMode && readings.length > 0 && (
+          <RecentReadingsTable readings={readings} />
+        )}
 
-          {/* Chart Section */}
-          {comparisonMode ? (
-            <MultiLineChart
-              series={comparisonChartSeries}
-              title={`Comparativo por ${comparisonGroupByMode === 'group' ? 'Grupo' : 'Tag'} - ${period === '24h' ? 'Últimas 24 horas' : period === '48h' ? 'Últimas 48 horas' : period === '7d' ? 'Últimos 7 dias' : period === '14d' ? 'Últimos 14 dias' : 'Últimos 30 dias'}`}
-            />
-          ) : selectedMonitorId && filteredChartData.length > 0 ? (
-            <ActiveAdsLineChart
-              data={filteredChartData}
-              title={`Anúncios Ativos - ${selectedMonitor?.name}`}
-            />
-          ) : multiMonitorChartSeries.length > 0 ? (
-            <MultiLineChart
-              series={multiMonitorChartSeries}
-              title={selectedGroup
-                ? `Comparativo - Grupo ${selectedGroup.name} (Top ${Math.min(multiMonitorChartSeries.length, 10)} monitores)`
-                : `Comparativo - Top ${Math.min(multiMonitorChartSeries.length, 10)} monitores - ${period === '24h' ? 'Últimas 24 horas' : period === '48h' ? 'Últimas 48 horas' : period === '7d' ? 'Últimos 7 dias' : period === '14d' ? 'Últimos 14 dias' : 'Últimos 30 dias'}`}
-            />
-          ) : (
-            <div className="metric-card flex items-center justify-center h-[300px]">
-              <p className="text-muted-foreground">
-                Nenhum dado de leitura disponível ainda
-              </p>
-            </div>
-          )}
-
-          {/* Recent Readings */}
-          {!comparisonMode && readings.length > 0 && (
-            <RecentReadingsTable readings={readings} />
-          )}
-
-          {monitors.length === 0 && (
-            <div className="metric-card text-center py-12">
-              <Radio className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-foreground">
-                Comece a monitorar
-              </h3>
-              <p className="text-muted-foreground mt-1">
-                Crie seu primeiro monitor na aba "Monitores" para começar a acompanhar anúncios.
-              </p>
-            </div>
-          )}
+        {monitors.length === 0 && (
+          <div className="metric-card text-center py-12">
+            <Radio className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-foreground">
+              Comece a monitorar
+            </h3>
+            <p className="text-muted-foreground mt-1">
+              Crie seu primeiro monitor na aba "Monitores" para começar a acompanhar anúncios.
+            </p>
+          </div>
+        )}
         </div>
 
         {/* Comparison Sidebar */}
