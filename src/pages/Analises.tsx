@@ -549,7 +549,85 @@ function AnalisisContent() {
               Visualize tendências, benchmarking e dados históricos
             </p>
           </div>
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-wrap gap-3 items-center">
+            {/* Monitor Selection Mode */}
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant={monitorSelectionMode === 'specific' ? "default" : "outline"} className="gap-2">
+                  <Activity className="h-4 w-4" />
+                  {monitorSelectionMode === 'specific' 
+                    ? `${selectedMonitorIds.length} monitor${selectedMonitorIds.length !== 1 ? 'es' : ''}`
+                    : "Monitores"
+                  }
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-80 max-h-[400px] overflow-y-auto" align="start">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-medium">Selecionar Monitores</Label>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        if (monitorSelectionMode === 'specific') {
+                          setMonitorSelectionMode('all');
+                          setSelectedMonitorIds([]);
+                        } else {
+                          setMonitorSelectionMode('specific');
+                        }
+                      }}
+                    >
+                      {monitorSelectionMode === 'specific' ? "Todos" : "Escolher"}
+                    </Button>
+                  </div>
+                  
+                  {monitorSelectionMode === 'specific' && (
+                    <div className="space-y-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="w-full justify-start text-xs"
+                        onClick={() => {
+                          if (selectedMonitorIds.length === monitors.length) {
+                            setSelectedMonitorIds([]);
+                          } else {
+                            setSelectedMonitorIds(monitors.map(m => m.id));
+                          }
+                        }}
+                      >
+                        {selectedMonitorIds.length === monitors.length ? "Desmarcar todos" : "Selecionar todos"}
+                      </Button>
+                      {monitors.map((m) => (
+                        <label
+                          key={m.id}
+                          className="flex items-center gap-2 p-2 rounded hover:bg-muted cursor-pointer text-sm"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedMonitorIds.includes(m.id)}
+                            onChange={() => {
+                              setSelectedMonitorIds(prev => 
+                                prev.includes(m.id) 
+                                  ? prev.filter(id => id !== m.id)
+                                  : [...prev, m.id]
+                              );
+                            }}
+                            className="rounded border-border"
+                          />
+                          <span className="truncate">{m.name}</span>
+                          {m.group_id && (
+                            <span className="text-xs text-muted-foreground ml-auto">
+                              {groups.find(g => g.id === m.group_id)?.name}
+                            </span>
+                          )}
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </PopoverContent>
+            </Popover>
+
             <Select value={selectedGroupId} onValueChange={setSelectedGroupId}>
               <SelectTrigger className="w-[180px] bg-card border-border">
                 <SelectValue placeholder="Filtrar por grupo" />
@@ -646,32 +724,16 @@ function AnalisisContent() {
                       </div>
                       
                       <div className="flex flex-wrap gap-2">
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          onClick={() => setHourRange({ start: 6, end: 12 })}
-                        >
+                        <Button variant="outline" size="sm" onClick={() => setHourRange({ start: 6, end: 12 })}>
                           Manhã (6-12h)
                         </Button>
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          onClick={() => setHourRange({ start: 12, end: 18 })}
-                        >
+                        <Button variant="outline" size="sm" onClick={() => setHourRange({ start: 12, end: 18 })}>
                           Tarde (12-18h)
                         </Button>
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          onClick={() => setHourRange({ start: 18, end: 23 })}
-                        >
+                        <Button variant="outline" size="sm" onClick={() => setHourRange({ start: 18, end: 23 })}>
                           Noite (18-23h)
                         </Button>
-                        <Button 
-                          variant="outline" 
-                          size="sm"
-                          onClick={() => setHourRange({ start: 9, end: 18 })}
-                        >
+                        <Button variant="outline" size="sm" onClick={() => setHourRange({ start: 9, end: 18 })}>
                           Comercial (9-18h)
                         </Button>
                       </div>
