@@ -44,6 +44,9 @@ interface Monitor {
     windows: string[];
   };
   tags?: Tag[];
+  website_url?: string | null;
+  extra_ad_library_urls?: string[];
+  extra_website_urls?: string[];
 }
 
 interface EditMonitorDialogProps {
@@ -71,6 +74,9 @@ export function EditMonitorDialog({
   const [interval, setInterval] = useState(monitor.schedule_config.interval.toString());
   const [selectedTags, setSelectedTags] = useState<string[]>(monitor.tags?.map(t => t.id) || []);
   const [isActive, setIsActive] = useState(true);
+  const [extraAdLibraryUrls, setExtraAdLibraryUrls] = useState<string[]>(monitor.extra_ad_library_urls || []);
+  const [websiteUrl, setWebsiteUrl] = useState(monitor.website_url || "");
+  const [extraWebsiteUrls, setExtraWebsiteUrls] = useState<string[]>(monitor.extra_website_urls || []);
 
   useEffect(() => {
     setName(monitor.name);
@@ -78,6 +84,9 @@ export function EditMonitorDialog({
     setGroupId(monitor.group_id || "none");
     setInterval(monitor.schedule_config.interval.toString());
     setSelectedTags(monitor.tags?.map(t => t.id) || []);
+    setExtraAdLibraryUrls(monitor.extra_ad_library_urls || []);
+    setWebsiteUrl(monitor.website_url || "");
+    setExtraWebsiteUrls(monitor.extra_website_urls || []);
   }, [monitor]);
 
   const toggleTag = (tagId: string) => {
@@ -106,7 +115,10 @@ export function EditMonitorDialog({
             ...monitor.schedule_config,
             interval: parseInt(interval),
           },
-        })
+          website_url: websiteUrl.trim() || null,
+          extra_ad_library_urls: extraAdLibraryUrls.filter(u => u.trim()),
+          extra_website_urls: extraWebsiteUrls.filter(u => u.trim()),
+        } as any)
         .eq("id", monitor.id);
 
       if (error) throw error;
@@ -161,7 +173,7 @@ export function EditMonitorDialog({
 
           <div className="space-y-2">
             <Label htmlFor="edit-url" className="text-foreground">
-              URL da Biblioteca de Anúncios
+              URL da Biblioteca de Anúncios (principal)
             </Label>
             <div className="flex gap-2">
               <Input
@@ -171,17 +183,102 @@ export function EditMonitorDialog({
                 onChange={(e) => setUrl(e.target.value)}
                 className="bg-muted border-border flex-1"
               />
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                asChild
-              >
+              <Button type="button" variant="outline" size="icon" asChild>
                 <a href={url} target="_blank" rel="noopener noreferrer">
                   <ExternalLink className="h-4 w-4" />
                 </a>
               </Button>
             </div>
+            
+            {/* Extra Ad Library URLs */}
+            {extraAdLibraryUrls.map((extraUrl, idx) => (
+              <div key={idx} className="flex gap-2">
+                <Input
+                  placeholder="URL adicional da Biblioteca..."
+                  value={extraUrl}
+                  onChange={(e) => {
+                    const newUrls = [...extraAdLibraryUrls];
+                    newUrls[idx] = e.target.value;
+                    setExtraAdLibraryUrls(newUrls);
+                  }}
+                  className="bg-muted border-border flex-1"
+                />
+                <Button type="button" variant="outline" size="icon" asChild>
+                  <a href={extraUrl} target="_blank" rel="noopener noreferrer">
+                    <ExternalLink className="h-4 w-4" />
+                  </a>
+                </Button>
+                <Button type="button" variant="ghost" size="icon" onClick={() => {
+                  setExtraAdLibraryUrls(prev => prev.filter((_, i) => i !== idx));
+                }}>
+                  <X className="h-4 w-4 text-destructive" />
+                </Button>
+              </div>
+            ))}
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="text-xs gap-1"
+              onClick={() => setExtraAdLibraryUrls(prev => [...prev, ""])}
+            >
+              <Plus className="h-3 w-3" /> Adicionar URL da Biblioteca
+            </Button>
+          </div>
+
+          {/* Website URLs */}
+          <div className="space-y-2">
+            <Label className="text-foreground">URLs de Páginas de Vendas</Label>
+            <div className="flex gap-2">
+              <Input
+                placeholder="https://exemplo.com/vendas"
+                value={websiteUrl}
+                onChange={(e) => setWebsiteUrl(e.target.value)}
+                className="bg-muted border-border flex-1"
+              />
+              {websiteUrl && (
+                <Button type="button" variant="outline" size="icon" asChild>
+                  <a href={websiteUrl} target="_blank" rel="noopener noreferrer">
+                    <ExternalLink className="h-4 w-4" />
+                  </a>
+                </Button>
+              )}
+            </div>
+            {extraWebsiteUrls.map((extraUrl, idx) => (
+              <div key={idx} className="flex gap-2">
+                <Input
+                  placeholder="URL adicional de vendas..."
+                  value={extraUrl}
+                  onChange={(e) => {
+                    const newUrls = [...extraWebsiteUrls];
+                    newUrls[idx] = e.target.value;
+                    setExtraWebsiteUrls(newUrls);
+                  }}
+                  className="bg-muted border-border flex-1"
+                />
+                {extraUrl && (
+                  <Button type="button" variant="outline" size="icon" asChild>
+                    <a href={extraUrl} target="_blank" rel="noopener noreferrer">
+                      <ExternalLink className="h-4 w-4" />
+                    </a>
+                  </Button>
+                )}
+                <Button type="button" variant="ghost" size="icon" onClick={() => {
+                  setExtraWebsiteUrls(prev => prev.filter((_, i) => i !== idx));
+                }}>
+                  <X className="h-4 w-4 text-destructive" />
+                </Button>
+              </div>
+            ))}
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="text-xs gap-1"
+              onClick={() => setExtraWebsiteUrls(prev => [...prev, ""])}
+            >
+              <Plus className="h-3 w-3" /> Adicionar Página de Vendas
+            </Button>
           </div>
 
           <div className="space-y-2">
