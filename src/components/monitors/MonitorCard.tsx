@@ -203,12 +203,12 @@ export function MonitorCard({
         </div>
       </div>
 
-      {/* Name + URL Link + Website */}
+      {/* Name + URLs */}
       <div className="mb-2">
         <h3 className="text-sm font-semibold text-foreground truncate" title={monitor.name}>
           {monitor.name}
         </h3>
-        {/* Direct clickable link to page */}
+        {/* Ad Library URL(s) */}
         <a
           href={monitor.ad_library_url}
           target="_blank"
@@ -219,8 +219,21 @@ export function MonitorCard({
         >
           {monitor.ad_library_url.replace('https://', '').replace('www.', '').substring(0, 35)}...
         </a>
+        {(monitor as any).extra_ad_library_urls?.map((extraUrl: string, idx: number) => (
+          <a
+            key={`ad-${idx}`}
+            href={extraUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[10px] text-muted-foreground hover:text-primary transition-colors truncate block"
+            title={extraUrl}
+            onClick={(e) => e.stopPropagation()}
+          >
+            📚 {extraUrl.replace('https://', '').replace('www.', '').substring(0, 30)}...
+          </a>
+        ))}
         
-        {/* Website URL - editable */}
+        {/* Website URL(s) */}
         <div className="mt-1">
           <WebsiteUrlInput
             monitorId={monitor.id}
@@ -229,6 +242,19 @@ export function MonitorCard({
             compact
           />
         </div>
+        {(monitor as any).extra_website_urls?.map((extraUrl: string, idx: number) => (
+          <a
+            key={`web-${idx}`}
+            href={extraUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[10px] text-primary hover:underline truncate block"
+            title={extraUrl}
+            onClick={(e) => e.stopPropagation()}
+          >
+            🌐 {extraUrl.replace('https://', '').replace('www.', '').substring(0, 25)}...
+          </a>
+        ))}
         
         {showGroupBadge && group && (
           <span
