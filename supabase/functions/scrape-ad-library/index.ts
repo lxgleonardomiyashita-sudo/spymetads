@@ -294,7 +294,7 @@ serve(async (req) => {
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
   try {
-    const { monitor_id, url }: ScrapeRequest = await req.json();
+    const { monitor_id, url, allow_firecrawl_fallback = false }: ScrapeRequest = await req.json();
 
     if (!monitor_id || !url) {
       return new Response(
@@ -303,7 +303,8 @@ serve(async (req) => {
       );
     }
 
-    console.log(`Scraping Ad Library URL for monitor ${monitor_id}: ${url}`);
+    const normalizedUrl = normalizeAdLibraryUrl(url);
+    console.log(`Scraping Ad Library URL for monitor ${monitor_id}: ${normalizedUrl}`);
 
     // Fetch recent readings for anomaly detection
     const { data: recentReadings } = await supabase
@@ -317,16 +318,30 @@ serve(async (req) => {
     const recentCounts = (recentReadings || []).map(r => r.ads_active_count);
     console.log(`Recent counts for anomaly check: [${recentCounts.join(', ')}]`);
 
-    // Direct fetch — no Firecrawl needed for Facebook Ad Library
-    const fetchResult = await fetchAdLibraryPage(url);
+    let fetchResult = await fetchDirectAdLibraryPage(normalizedUrl);
+
+    const shouldTryFirecrawlFallback =
+      allow_firecrawl_fallback &&
+      !fetchResult.success &&
+      [403, 429].includes(fetchResult.statusCode ?? 0);
+
+    if (shouldTryFirecrawlFallback) {
+      console.log('Direct fetch blocked, trying Firecrawl fallback...');
+      const firecrawlResult = await fetchWithFirecrawl(normalizedUrl);
+      if (firecrawlResult.success) {
+        fetchResult = firecrawlResult;
+      } else {
+        fetchResult.error = `${fetchResult.error || 'Direct fetch failed'} | ${firecrawlResult.error || 'Firecrawl fallback failed'}`;
+      }
+    }
 
     if (!fetchResult.success) {
-      console.error('Direct fetch failed:', fetchResult.error);
+      console.error('Fetch failed:', fetchResult.error);
 
       await supabase.from('readings').insert({
         monitor_id,
         ads_active_count: 0,
-        source_method: 'direct_fetch',
+        source_method: fetchResult.sourceMethod,
         status: 'error',
         error_message: fetchResult.error || 'Failed to fetch Ad Library page',
       });
@@ -337,7 +352,7 @@ serve(async (req) => {
       );
     }
 
-    const content = fetchResult.html;
+    const content = fetchResult.content;
     console.log('Fetched content length:', content.length);
 
     // Extract ads count
