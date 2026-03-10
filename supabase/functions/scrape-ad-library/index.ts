@@ -174,6 +174,44 @@ async function fetchWithFirecrawl(url: string): Promise<FetchResult> {
 }
 
 /**
+ * Detect if a new count is an anomalous spike compared to recent history.
+ */
+function isAnomalousSpike(newCount: number, recentCounts: number[]): boolean {
+  if (recentCounts.length < 2) return false;
+  if (newCount === 0) return false;
+
+  if (newCount > 10000) {
+    console.log(`ANOMALY DETECTED (absolute threshold): ${newCount} exceeds 10,000 limit`);
+    return true;
+  }
+
+  const sameValueCount = recentCounts.filter(c => c === newCount).length;
+  if (sameValueCount >= 3 && newCount > 500) {
+    console.log(`ANOMALY DETECTED (steady-state): ${newCount} appeared ${sameValueCount} times`);
+    return true;
+  }
+
+  const validCounts = recentCounts.filter(c => c > 0 && c < 10000);
+  if (validCounts.length === 0) {
+    return newCount > 100;
+  }
+
+  const sorted = [...validCounts].sort((a, b) => a - b);
+  const median = sorted[Math.floor(sorted.length / 2)];
+  const maxRecent = Math.max(...validCounts);
+
+  const spikeRatio = newCount / median;
+  const maxRatio = newCount / maxRecent;
+
+  if (spikeRatio > 10 && maxRatio > 5) {
+    console.log(`ANOMALY DETECTED (spike): new=${newCount}, median=${median}, max=${maxRecent}`);
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * Extract the active ads count from the HTML content.
  */
 function extractAdsCount(content: string): { count: number; found: boolean } {
