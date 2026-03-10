@@ -219,7 +219,7 @@ export function MonitorCard({
         >
           {monitor.ad_library_url.replace('https://', '').replace('www.', '').substring(0, 35)}...
         </a>
-        {(monitor as any).extra_ad_library_urls?.map((extraUrl: string, idx: number) => (
+        {monitor.extra_ad_library_urls?.map((extraUrl: string, idx: number) => (
           <a
             key={`ad-${idx}`}
             href={extraUrl}
