@@ -216,7 +216,7 @@ serve(async (req) => {
         processed: monitorsToRun.length,
         successful,
         failed,
-        results: results.map(r => r.status === 'fulfilled' ? r.value : { error: 'rejected' }),
+        results,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
