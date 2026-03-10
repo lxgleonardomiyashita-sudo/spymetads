@@ -206,18 +206,23 @@ export function NewMonitorDialog({ open, onOpenChange, onSuccess, existingTags, 
 
       toast({ title: "Monitor criado!", description: `"${name}" foi adicionado. Iniciando primeira leitura...` });
 
+      onOpenChange(false);
+      onSuccess?.();
+
+      // Background first scrape — re-fetch monitors when done to show reading
       if (monitor) {
         supabase.functions.invoke('scrape-ad-library', {
           body: { monitor_id: monitor.id, url: url.trim() },
         }).then(({ data, error }) => {
           if (data?.success) {
             toast({ title: "Primeira leitura concluída!", description: `${data.ads_count.toLocaleString('pt-BR')} anúncios ativos encontrados` });
+          } else if (error) {
+            console.error('First scrape error:', error);
           }
+          // Always re-fetch to show the new reading
+          onSuccess?.();
         });
       }
-
-      onOpenChange(false);
-      onSuccess?.();
       setName(""); setUrl(""); setInterval(60);
       setSelectedDays(DAYS.map(d => d.value));
       setSelectedWindows(WINDOWS.map(w => w.value));
