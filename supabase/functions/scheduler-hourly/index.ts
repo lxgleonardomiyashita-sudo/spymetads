@@ -52,6 +52,8 @@ function shouldRunBasedOnInterval(
   return elapsedMinutes >= (intervalMinutes - 2);
 }
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -162,40 +164,47 @@ serve(async (req) => {
     // Delegate scraping to scrape-ad-library edge function (single source of truth)
     const scrapeUrl = `${supabaseUrl}/functions/v1/scrape-ad-library`;
 
-    const results = await Promise.allSettled(
-      monitorsToRun.map(async (monitor) => {
-        console.log(`[${monitor.name}] Delegating to scrape-ad-library...`);
-        
-        try {
-          const response = await fetch(scrapeUrl, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${supabaseServiceKey}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              monitor_id: monitor.id,
-              url: monitor.ad_library_url,
-            }),
-          });
+    const results: Array<Record<string, unknown>> = [];
 
-          const data = await response.json();
+    for (const monitor of monitorsToRun) {
+      console.log(`[${monitor.name}] Delegating to scrape-ad-library...`);
 
-          if (data.success) {
-            console.log(`[${monitor.name}] SUCCESS: ${data.ads_count} ads (status: ${data.reading_status}, anomaly: ${data.anomaly_detected})`);
-          } else {
-            console.error(`[${monitor.name}] FAILED: ${data.error}`);
-          }
+      try {
+        const response = await fetch(scrapeUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${supabaseServiceKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            monitor_id: monitor.id,
+            url: monitor.ad_library_url,
+            allow_firecrawl_fallback: false,
+          }),
+        });
 
-          return { monitor: monitor.name, ...data };
-        } catch (error) {
-          console.error(`[${monitor.name}] Exception:`, error);
-          return { monitor: monitor.name, success: false, error: String(error) };
+        const data = await response.json().catch(() => ({
+          success: false,
+          error: `Invalid scrape response (HTTP ${response.status})`,
+        }));
+
+        if (data.success) {
+          console.log(`[${monitor.name}] SUCCESS: ${data.ads_count} ads (status: ${data.reading_status}, anomaly: ${data.anomaly_detected})`);
+        } else {
+          console.error(`[${monitor.name}] FAILED: ${data.error}`);
         }
-      })
-    );
 
-    const successful = results.filter(r => r.status === 'fulfilled' && (r.value as any).success).length;
+        results.push({ monitor: monitor.name, ...data });
+      } catch (error) {
+        console.error(`[${monitor.name}] Exception:`, error);
+        results.push({ monitor: monitor.name, success: false, error: String(error) });
+      }
+
+      // Avoid burst requests that trigger blocking
+      await sleep(350);
+    }
+
+    const successful = results.filter((r) => Boolean(r.success)).length;
     const failed = results.length - successful;
 
     console.log(`[Scheduler] Completed: ${successful} success, ${failed} failed`);
@@ -207,7 +216,7 @@ serve(async (req) => {
         processed: monitorsToRun.length,
         successful,
         failed,
-        results: results.map(r => r.status === 'fulfilled' ? r.value : { error: 'rejected' }),
+        results,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

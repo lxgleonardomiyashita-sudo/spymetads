@@ -10,6 +10,167 @@ const corsHeaders = {
 interface ScrapeRequest {
   monitor_id: string;
   url: string;
+  allow_firecrawl_fallback?: boolean;
+}
+
+interface FetchResult {
+  content: string;
+  success: boolean;
+  sourceMethod: 'direct_fetch' | 'firecrawl';
+  error?: string;
+  statusCode?: number;
+}
+
+function normalizeAdLibraryUrl(rawUrl: string): string {
+  try {
+    const parsed = new URL(rawUrl.trim());
+
+    if (["web.facebook.com", "m.facebook.com", "mbasic.facebook.com"].includes(parsed.hostname)) {
+      parsed.hostname = "www.facebook.com";
+    }
+
+    parsed.protocol = "https:";
+    parsed.searchParams.delete("_cb");
+
+    return parsed.toString();
+  } catch {
+    return rawUrl.trim();
+  }
+}
+
+/**
+ * Fetch Facebook Ad Library page directly.
+ */
+async function fetchDirectAdLibraryPage(url: string): Promise<FetchResult> {
+  const userAgents = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+  ];
+
+  let lastStatusCode: number | undefined;
+  let lastError = 'All direct fetch attempts failed';
+
+  for (const ua of userAgents) {
+    try {
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'User-Agent': ua,
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+          'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache',
+          'Upgrade-Insecure-Requests': '1',
+          'Sec-Fetch-Dest': 'document',
+          'Sec-Fetch-Mode': 'navigate',
+          'Sec-Fetch-Site': 'none',
+        },
+        redirect: 'follow',
+      });
+
+      lastStatusCode = response.status;
+
+      if (!response.ok) {
+        lastError = `Direct fetch failed with status ${response.status}`;
+        console.log(`${lastError}, trying next strategy...`);
+        continue;
+      }
+
+      const html = await response.text();
+
+      if (html.length < 500) {
+        lastError = `Direct fetch returned short payload (${html.length} chars)`;
+        console.log(`${lastError}, trying next strategy...`);
+        continue;
+      }
+
+      console.log(`Direct fetch succeeded (${html.length} chars)`);
+      return { content: html, success: true, sourceMethod: 'direct_fetch' };
+    } catch (error) {
+      lastError = `Direct fetch exception: ${error instanceof Error ? error.message : 'unknown'}`;
+      console.log(lastError);
+    }
+  }
+
+  return {
+    content: '',
+    success: false,
+    sourceMethod: 'direct_fetch',
+    error: lastError,
+    statusCode: lastStatusCode,
+  };
+}
+
+/**
+ * Fallback fetch via Firecrawl when direct fetch is blocked.
+ */
+async function fetchWithFirecrawl(url: string): Promise<FetchResult> {
+  const firecrawlApiKey = Deno.env.get('FIRECRAWL_API_KEY');
+
+  if (!firecrawlApiKey) {
+    return {
+      content: '',
+      success: false,
+      sourceMethod: 'firecrawl',
+      error: 'Firecrawl fallback unavailable (FIRECRAWL_API_KEY not configured)',
+    };
+  }
+
+  try {
+    const response = await fetch('https://api.firecrawl.dev/v1/scrape', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${firecrawlApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        url,
+        formats: ['markdown', 'html'],
+        onlyMainContent: false,
+        waitFor: 1500,
+      }),
+    });
+
+    const payload = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      const apiError = payload?.error || payload?.message || `Firecrawl failed with status ${response.status}`;
+      return {
+        content: '',
+        success: false,
+        sourceMethod: 'firecrawl',
+        error: String(apiError),
+        statusCode: response.status,
+      };
+    }
+
+    const markdown = payload?.data?.markdown || payload?.markdown || '';
+    const html = payload?.data?.html || payload?.html || '';
+    const content = `${markdown}\n${html}`.trim();
+
+    if (!content) {
+      return {
+        content: '',
+        success: false,
+        sourceMethod: 'firecrawl',
+        error: 'Firecrawl returned empty content',
+      };
+    }
+
+    console.log(`Firecrawl fallback succeeded (${content.length} chars)`);
+    return {
+      content,
+      success: true,
+      sourceMethod: 'firecrawl',
+    };
+  } catch (error) {
+    return {
+      content: '',
+      success: false,
+      sourceMethod: 'firecrawl',
+      error: `Firecrawl fallback exception: ${error instanceof Error ? error.message : 'unknown'}`,
+    };
+  }
 }
 
 /**
@@ -18,7 +179,7 @@ interface ScrapeRequest {
 function isAnomalousSpike(newCount: number, recentCounts: number[]): boolean {
   if (recentCounts.length < 2) return false;
   if (newCount === 0) return false;
-  
+
   if (newCount > 10000) {
     console.log(`ANOMALY DETECTED (absolute threshold): ${newCount} exceeds 10,000 limit`);
     return true;
@@ -48,58 +209,6 @@ function isAnomalousSpike(newCount: number, recentCounts: number[]): boolean {
   }
 
   return false;
-}
-
-/**
- * Fetch Facebook Ad Library page directly (no Firecrawl needed).
- * Uses multiple user-agent strategies and direct HTTP fetch.
- */
-async function fetchAdLibraryPage(url: string): Promise<{ html: string; success: boolean; error?: string }> {
-  const userAgents = [
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-  ];
-
-  // Try with cache buster
-  const cacheBuster = Date.now();
-  const urlWithCb = url.includes('?') ? `${url}&_cb=${cacheBuster}` : `${url}?_cb=${cacheBuster}`;
-
-  for (const ua of userAgents) {
-    try {
-      const response = await fetch(urlWithCb, {
-        method: 'GET',
-        headers: {
-          'User-Agent': ua,
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
-          'Cache-Control': 'no-cache',
-          'Pragma': 'no-cache',
-        },
-        redirect: 'follow',
-      });
-
-      if (!response.ok) {
-        console.log(`Fetch attempt failed with status ${response.status}, trying next UA...`);
-        continue;
-      }
-
-      const html = await response.text();
-      
-      if (html.length < 500) {
-        console.log(`Response too short (${html.length} chars), trying next UA...`);
-        continue;
-      }
-
-      console.log(`Successfully fetched page (${html.length} chars)`);
-      return { html, success: true };
-    } catch (error) {
-      console.log(`Fetch attempt failed: ${error instanceof Error ? error.message : 'unknown'}`);
-      continue;
-    }
-  }
-
-  return { html: '', success: false, error: 'All fetch attempts failed' };
 }
 
 /**
@@ -185,7 +294,7 @@ serve(async (req) => {
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
   try {
-    const { monitor_id, url }: ScrapeRequest = await req.json();
+    const { monitor_id, url, allow_firecrawl_fallback = false }: ScrapeRequest = await req.json();
 
     if (!monitor_id || !url) {
       return new Response(
@@ -194,7 +303,8 @@ serve(async (req) => {
       );
     }
 
-    console.log(`Scraping Ad Library URL for monitor ${monitor_id}: ${url}`);
+    const normalizedUrl = normalizeAdLibraryUrl(url);
+    console.log(`Scraping Ad Library URL for monitor ${monitor_id}: ${normalizedUrl}`);
 
     // Fetch recent readings for anomaly detection
     const { data: recentReadings } = await supabase
@@ -208,16 +318,30 @@ serve(async (req) => {
     const recentCounts = (recentReadings || []).map(r => r.ads_active_count);
     console.log(`Recent counts for anomaly check: [${recentCounts.join(', ')}]`);
 
-    // Direct fetch — no Firecrawl needed for Facebook Ad Library
-    const fetchResult = await fetchAdLibraryPage(url);
+    let fetchResult = await fetchDirectAdLibraryPage(normalizedUrl);
+
+    const shouldTryFirecrawlFallback =
+      allow_firecrawl_fallback &&
+      !fetchResult.success &&
+      [403, 429].includes(fetchResult.statusCode ?? 0);
+
+    if (shouldTryFirecrawlFallback) {
+      console.log('Direct fetch blocked, trying Firecrawl fallback...');
+      const firecrawlResult = await fetchWithFirecrawl(normalizedUrl);
+      if (firecrawlResult.success) {
+        fetchResult = firecrawlResult;
+      } else {
+        fetchResult.error = `${fetchResult.error || 'Direct fetch failed'} | ${firecrawlResult.error || 'Firecrawl fallback failed'}`;
+      }
+    }
 
     if (!fetchResult.success) {
-      console.error('Direct fetch failed:', fetchResult.error);
+      console.error('Fetch failed:', fetchResult.error);
 
       await supabase.from('readings').insert({
         monitor_id,
         ads_active_count: 0,
-        source_method: 'direct_fetch',
+        source_method: fetchResult.sourceMethod,
         status: 'error',
         error_message: fetchResult.error || 'Failed to fetch Ad Library page',
       });
@@ -228,7 +352,7 @@ serve(async (req) => {
       );
     }
 
-    const content = fetchResult.html;
+    const content = fetchResult.content;
     console.log('Fetched content length:', content.length);
 
     // Extract ads count
@@ -254,7 +378,7 @@ serve(async (req) => {
     await supabase.from('readings').insert({
       monitor_id,
       ads_active_count: adsCount,
-      source_method: 'direct_fetch',
+      source_method: fetchResult.sourceMethod,
       status: readingStatus,
       error_message: errorMessage,
     });
@@ -266,7 +390,7 @@ serve(async (req) => {
         found_match: foundMatch,
         anomaly_detected: anomalyDetected,
         reading_status: readingStatus,
-        source_method: 'direct_fetch',
+        source_method: fetchResult.sourceMethod,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

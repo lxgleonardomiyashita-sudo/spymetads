@@ -212,7 +212,7 @@ export function NewMonitorDialog({ open, onOpenChange, onSuccess, existingTags, 
       // Background first scrape — re-fetch monitors when done to show reading
       if (monitor) {
         supabase.functions.invoke('scrape-ad-library', {
-          body: { monitor_id: monitor.id, url: url.trim() },
+          body: { monitor_id: monitor.id, url: url.trim(), allow_firecrawl_fallback: true },
         }).then(({ data, error }) => {
           if (data?.success) {
             toast({ title: "Primeira leitura concluída!", description: `${data.ads_count.toLocaleString('pt-BR')} anúncios ativos encontrados` });
