@@ -52,6 +52,8 @@ function shouldRunBasedOnInterval(
   return elapsedMinutes >= (intervalMinutes - 2);
 }
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
