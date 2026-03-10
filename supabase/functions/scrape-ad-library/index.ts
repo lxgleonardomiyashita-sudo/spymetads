@@ -378,7 +378,7 @@ serve(async (req) => {
     await supabase.from('readings').insert({
       monitor_id,
       ads_active_count: adsCount,
-      source_method: 'direct_fetch',
+      source_method: fetchResult.sourceMethod,
       status: readingStatus,
       error_message: errorMessage,
     });
@@ -390,7 +390,7 @@ serve(async (req) => {
         found_match: foundMatch,
         anomaly_detected: anomalyDetected,
         reading_status: readingStatus,
-        source_method: 'direct_fetch',
+        source_method: fetchResult.sourceMethod,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
