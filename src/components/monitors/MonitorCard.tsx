@@ -242,7 +242,7 @@ export function MonitorCard({
             compact
           />
         </div>
-        {(monitor as any).extra_website_urls?.map((extraUrl: string, idx: number) => (
+        {monitor.extra_website_urls?.map((extraUrl: string, idx: number) => (
           <a
             key={`web-${idx}`}
             href={extraUrl}
