@@ -192,45 +192,56 @@ export function useMonitorData(options: UseMonitorDataOptions = {}) {
 
   const scrapeMultipleMonitors = useCallback(async (monitorIds: string[]) => {
     const monitorsToScrape = monitors.filter((m) => monitorIds.includes(m.id));
-    
-    // Add all to scraping set
+
     setScrapingMonitors(prev => {
       const next = new Set(prev);
       monitorIds.forEach(id => next.add(id));
       return next;
     });
 
-    // Process all in parallel
-    await Promise.all(
-      monitorsToScrape.map(async (monitor) => {
+    let successCount = 0;
+    let failureCount = 0;
+
+    try {
+      for (const monitor of monitorsToScrape) {
         try {
           const { data, error } = await supabase.functions.invoke('scrape-ad-library', {
-            body: { monitor_id: monitor.id, url: monitor.ad_library_url },
+            body: {
+              monitor_id: monitor.id,
+              url: monitor.ad_library_url,
+              allow_firecrawl_fallback: false,
+            },
           });
 
-          if (error) {
-            console.error(`Error scraping ${monitor.name}:`, error.message);
+          if (error || !data?.success) {
+            failureCount += 1;
+            console.error(`Error scraping ${monitor.name}:`, error?.message || data?.error || 'Unknown error');
+          } else {
+            successCount += 1;
           }
         } catch (error: any) {
+          failureCount += 1;
           console.error(`Error scraping ${monitor.name}:`, error.message);
         }
-      })
-    );
 
-    // Remove all from scraping set
-    setScrapingMonitors(prev => {
-      const next = new Set(prev);
-      monitorIds.forEach(id => next.delete(id));
-      return next;
-    });
+        // Small gap to avoid burst/rate-limit blocks
+        await new Promise((resolve) => setTimeout(resolve, 350));
+      }
 
-    // Refresh data
-    await fetchMonitors();
-    
-    toast({
-      title: "Atualização concluída",
-      description: `${monitorsToScrape.length} monitores atualizados`,
-    });
+      await fetchMonitors();
+
+      toast({
+        title: failureCount === 0 ? "Atualização concluída" : "Atualização parcial",
+        description: `${successCount} ok • ${failureCount} com falha`,
+        variant: failureCount > 0 ? "destructive" : "default",
+      });
+    } finally {
+      setScrapingMonitors(prev => {
+        const next = new Set(prev);
+        monitorIds.forEach(id => next.delete(id));
+        return next;
+      });
+    }
   }, [monitors, toast, fetchMonitors]);
 
   const scrapeMonitor = useCallback(async (monitorId: string, url: string, name: string) => {
@@ -242,7 +253,11 @@ export function useMonitorData(options: UseMonitorDataOptions = {}) {
 
     try {
       const { data, error } = await supabase.functions.invoke('scrape-ad-library', {
-        body: { monitor_id: monitorId, url },
+        body: {
+          monitor_id: monitorId,
+          url,
+          allow_firecrawl_fallback: true,
+        },
       });
 
       if (error) throw error;
