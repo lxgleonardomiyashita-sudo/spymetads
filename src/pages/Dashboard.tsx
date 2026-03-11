@@ -1057,9 +1057,9 @@ function DashboardContent() {
                 Status dos Monitores
                 {selectedGroup && <span className="text-muted-foreground font-normal ml-2">({selectedGroup.name})</span>}
               </h2>
-              {selectedMonitorId && (
+              {appliedMonitorId && (
                 <button
-                  onClick={() => setSelectedMonitorId(null)}
+                  onClick={() => { setSelectedMonitorId(null); setAppliedMonitorId(null); }}
                   className="text-sm text-primary hover:text-primary/80 font-medium transition-colors"
                 >
                   Ver todos
