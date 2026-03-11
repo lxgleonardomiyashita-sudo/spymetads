@@ -336,19 +336,27 @@ function DashboardContent() {
   const [appliedMonitorId, setAppliedMonitorId] = useState<string | null>(null);
   const [dashFiltersChanged, setDashFiltersChanged] = useState(false);
 
-  // Check if filters changed
-  const checkDashFiltersChanged = () => {
+  // In comparison mode, auto-apply period changes immediately
+  useEffect(() => {
+    if (comparisonMode) {
+      setAppliedPeriod(period);
+      setAppliedCustomRange(customRange);
+    }
+  }, [comparisonMode, period, customRange]);
+
+  // Check if filters changed (only relevant outside comparison mode)
+  useEffect(() => {
+    if (comparisonMode) {
+      setDashFiltersChanged(false);
+      return;
+    }
     const changed = 
       period !== appliedPeriod ||
       JSON.stringify(customRange) !== JSON.stringify(appliedCustomRange) ||
       selectedGroupId !== appliedGroupId ||
       selectedMonitorId !== appliedMonitorId;
     setDashFiltersChanged(changed);
-  };
-
-  useEffect(() => {
-    checkDashFiltersChanged();
-  }, [period, customRange, selectedGroupId, selectedMonitorId]);
+  }, [period, customRange, selectedGroupId, selectedMonitorId, comparisonMode, appliedPeriod, appliedCustomRange, appliedGroupId, appliedMonitorId]);
 
   const applyDashFilters = () => {
     setAppliedPeriod(period);
@@ -712,12 +720,15 @@ function DashboardContent() {
     };
   }, [monitors, pulseGroupId, allReadingsRaw, stats.successRate]);
 
-  const selectedMonitor = selectedMonitorId ? monitors.find(m => m.id === selectedMonitorId) : null;
-  const selectedGroup = selectedGroupId ? groups.find(g => g.id === selectedGroupId) : null;
+  const selectedMonitor = appliedMonitorId ? monitors.find(m => m.id === appliedMonitorId) : null;
+  const selectedGroup = appliedGroupId ? groups.find(g => g.id === appliedGroupId) : null;
 
   const clearFilters = () => {
     setSelectedMonitorId(null);
     setSelectedGroupId(null);
+    setAppliedMonitorId(null);
+    setAppliedGroupId(null);
+    setDashFiltersChanged(false);
   };
 
   // Toggle comparison mode
@@ -1046,9 +1057,9 @@ function DashboardContent() {
                 Status dos Monitores
                 {selectedGroup && <span className="text-muted-foreground font-normal ml-2">({selectedGroup.name})</span>}
               </h2>
-              {selectedMonitorId && (
+              {appliedMonitorId && (
                 <button
-                  onClick={() => setSelectedMonitorId(null)}
+                  onClick={() => { setSelectedMonitorId(null); setAppliedMonitorId(null); }}
                   className="text-sm text-primary hover:text-primary/80 font-medium transition-colors"
                 >
                   Ver todos
@@ -1067,8 +1078,8 @@ function DashboardContent() {
                   sparklineData={monitor.sparklineData}
                   tags={monitor.tags}
                   status={monitor.is_active ? 'active' : 'inactive'}
-                  isSelected={selectedMonitorId === monitor.id}
-                  onSelect={() => setSelectedMonitorId(monitor.id)}
+                  isSelected={appliedMonitorId === monitor.id}
+                  onSelect={() => { setSelectedMonitorId(monitor.id); setAppliedMonitorId(monitor.id); setSelectedGroupId(null); setAppliedGroupId(null); }}
                   onViewCreatives={() => handleViewCreatives(monitor.ad_library_url)}
                 />
               ))}
