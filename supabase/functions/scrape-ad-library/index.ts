@@ -345,13 +345,25 @@ serve(async (req) => {
     if (!fetchResult.success) {
       console.error('Fetch failed:', fetchResult.error);
 
-      await supabase.from('readings').insert({
+      const { error: insertError } = await supabase.from('readings').insert({
         monitor_id,
         ads_active_count: 0,
-        source_method: fetchResult.sourceMethod,
+        source_method: mapSourceMethodToDb(fetchResult.sourceMethod),
         status: 'error',
         error_message: fetchResult.error || 'Failed to fetch Ad Library page',
       });
+
+      if (insertError) {
+        console.error('Failed to persist error reading:', insertError);
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: `Falha ao salvar leitura de erro: ${insertError.message}`,
+            ads_count: 0,
+          }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
 
       return new Response(
         JSON.stringify({ success: false, error: fetchResult.error || 'Failed to fetch page', ads_count: 0 }),
@@ -381,14 +393,26 @@ serve(async (req) => {
 
     console.log(`Final: monitor=${monitor_id}, count=${adsCount}, status=${readingStatus}, found=${foundMatch}, anomaly=${anomalyDetected}`);
 
-    // Insert reading
-    await supabase.from('readings').insert({
+    const { error: insertError } = await supabase.from('readings').insert({
       monitor_id,
       ads_active_count: adsCount,
-      source_method: fetchResult.sourceMethod,
+      source_method: mapSourceMethodToDb(fetchResult.sourceMethod),
       status: readingStatus,
       error_message: errorMessage,
     });
+
+    if (insertError) {
+      console.error('Failed to persist reading:', insertError);
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: `Falha ao salvar leitura: ${insertError.message}`,
+          ads_count: adsCount,
+          reading_status: readingStatus,
+        }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     return new Response(
       JSON.stringify({
