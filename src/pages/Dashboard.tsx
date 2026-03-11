@@ -726,6 +726,9 @@ function DashboardContent() {
   const clearFilters = () => {
     setSelectedMonitorId(null);
     setSelectedGroupId(null);
+    setAppliedMonitorId(null);
+    setAppliedGroupId(null);
+    setDashFiltersChanged(false);
   };
 
   // Toggle comparison mode
