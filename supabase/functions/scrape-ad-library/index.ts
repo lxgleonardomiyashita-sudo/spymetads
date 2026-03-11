@@ -21,6 +21,13 @@ interface FetchResult {
   statusCode?: number;
 }
 
+type DbSourceMethod = 'api' | 'public_parse';
+
+function mapSourceMethodToDb(sourceMethod: FetchResult['sourceMethod']): DbSourceMethod {
+  // readings.source_method currently accepts only: api | public_parse
+  return sourceMethod === 'firecrawl' ? 'api' : 'public_parse';
+}
+
 function normalizeAdLibraryUrl(rawUrl: string): string {
   try {
     const parsed = new URL(rawUrl.trim());
