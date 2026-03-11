@@ -336,19 +336,27 @@ function DashboardContent() {
   const [appliedMonitorId, setAppliedMonitorId] = useState<string | null>(null);
   const [dashFiltersChanged, setDashFiltersChanged] = useState(false);
 
-  // Check if filters changed
-  const checkDashFiltersChanged = () => {
+  // In comparison mode, auto-apply period changes immediately
+  useEffect(() => {
+    if (comparisonMode) {
+      setAppliedPeriod(period);
+      setAppliedCustomRange(customRange);
+    }
+  }, [comparisonMode, period, customRange]);
+
+  // Check if filters changed (only relevant outside comparison mode)
+  useEffect(() => {
+    if (comparisonMode) {
+      setDashFiltersChanged(false);
+      return;
+    }
     const changed = 
       period !== appliedPeriod ||
       JSON.stringify(customRange) !== JSON.stringify(appliedCustomRange) ||
       selectedGroupId !== appliedGroupId ||
       selectedMonitorId !== appliedMonitorId;
     setDashFiltersChanged(changed);
-  };
-
-  useEffect(() => {
-    checkDashFiltersChanged();
-  }, [period, customRange, selectedGroupId, selectedMonitorId]);
+  }, [period, customRange, selectedGroupId, selectedMonitorId, comparisonMode, appliedPeriod, appliedCustomRange, appliedGroupId, appliedMonitorId]);
 
   const applyDashFilters = () => {
     setAppliedPeriod(period);
