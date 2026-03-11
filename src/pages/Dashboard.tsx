@@ -720,8 +720,8 @@ function DashboardContent() {
     };
   }, [monitors, pulseGroupId, allReadingsRaw, stats.successRate]);
 
-  const selectedMonitor = selectedMonitorId ? monitors.find(m => m.id === selectedMonitorId) : null;
-  const selectedGroup = selectedGroupId ? groups.find(g => g.id === selectedGroupId) : null;
+  const selectedMonitor = appliedMonitorId ? monitors.find(m => m.id === appliedMonitorId) : null;
+  const selectedGroup = appliedGroupId ? groups.find(g => g.id === appliedGroupId) : null;
 
   const clearFilters = () => {
     setSelectedMonitorId(null);
