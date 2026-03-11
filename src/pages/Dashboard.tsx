@@ -1078,8 +1078,8 @@ function DashboardContent() {
                   sparklineData={monitor.sparklineData}
                   tags={monitor.tags}
                   status={monitor.is_active ? 'active' : 'inactive'}
-                  isSelected={selectedMonitorId === monitor.id}
-                  onSelect={() => setSelectedMonitorId(monitor.id)}
+                  isSelected={appliedMonitorId === monitor.id}
+                  onSelect={() => { setSelectedMonitorId(monitor.id); setAppliedMonitorId(monitor.id); setSelectedGroupId(null); setAppliedGroupId(null); }}
                   onViewCreatives={() => handleViewCreatives(monitor.ad_library_url)}
                 />
               ))}
