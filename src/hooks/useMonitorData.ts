@@ -210,7 +210,8 @@ export function useMonitorData(options: UseMonitorDataOptions = {}) {
             body: {
               monitor_id: monitor.id,
               url: monitor.ad_library_url,
-              allow_firecrawl_fallback: false,
+              // Em lote também precisa fallback para evitar falha massiva por 403
+              allow_firecrawl_fallback: true,
             },
           });
 
