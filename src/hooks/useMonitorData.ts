@@ -190,7 +190,7 @@ export function useMonitorData(options: UseMonitorDataOptions = {}) {
     }
   }, [toast]);
 
-  const scrapeMultipleMonitors = useCallback(async (monitorIds: string[]) => {
+  const scrapeMultipleMonitors = useCallback(async (monitorIds: string[], onProgress?: (current: number, total: number) => void) => {
     const monitorsToScrape = monitors.filter((m) => monitorIds.includes(m.id));
 
     setScrapingMonitors(prev => {
@@ -203,7 +203,8 @@ export function useMonitorData(options: UseMonitorDataOptions = {}) {
     let failureCount = 0;
 
     try {
-      for (const monitor of monitorsToScrape) {
+      for (let i = 0; i < monitorsToScrape.length; i++) {
+        const monitor = monitorsToScrape[i];
         try {
           const { data, error } = await supabase.functions.invoke('scrape-ad-library', {
             body: {
@@ -224,8 +225,12 @@ export function useMonitorData(options: UseMonitorDataOptions = {}) {
           console.error(`Error scraping ${monitor.name}:`, error.message);
         }
 
+        onProgress?.(i + 1, monitorsToScrape.length);
+
         // Small gap to avoid burst/rate-limit blocks
-        await new Promise((resolve) => setTimeout(resolve, 350));
+        if (i < monitorsToScrape.length - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 350));
+        }
       }
 
       await fetchMonitors();

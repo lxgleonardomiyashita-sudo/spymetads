@@ -17,7 +17,7 @@ interface BulkScrapeActionsProps {
   monitors: Monitor[];
   tags: Tag[];
   scrapingMonitors: Set<string>;
-  onScrapeMonitors: (monitorIds: string[]) => Promise<void>;
+  onScrapeMonitors: (monitorIds: string[], onProgress?: (current: number, total: number) => void) => Promise<void>;
 }
 
 export function BulkScrapeActions({
@@ -45,13 +45,9 @@ export function BulkScrapeActions({
     setBulkProgress({ current: 0, total: monitorIds.length });
 
     try {
-      // Process monitors in batches of 3 for better UX
-      const batchSize = 3;
-      for (let i = 0; i < monitorIds.length; i += batchSize) {
-        const batch = monitorIds.slice(i, i + batchSize);
-        await onScrapeMonitors(batch);
-        setBulkProgress({ current: Math.min(i + batchSize, monitorIds.length), total: monitorIds.length });
-      }
+      await onScrapeMonitors(monitorIds, (current, total) => {
+        setBulkProgress({ current, total });
+      });
     } finally {
       setIsBulkScraping(false);
       setSelectedTagForScrape(null);
