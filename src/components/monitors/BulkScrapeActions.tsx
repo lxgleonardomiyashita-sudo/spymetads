@@ -45,7 +45,9 @@ export function BulkScrapeActions({
     setBulkProgress({ current: 0, total: monitorIds.length });
 
     try {
-      await onScrapeMonitors(monitorIds);
+      await onScrapeMonitors(monitorIds, (current, total) => {
+        setBulkProgress({ current, total });
+      });
     } finally {
       setIsBulkScraping(false);
       setSelectedTagForScrape(null);
