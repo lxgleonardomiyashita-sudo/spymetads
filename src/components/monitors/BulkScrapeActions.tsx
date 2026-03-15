@@ -17,7 +17,7 @@ interface BulkScrapeActionsProps {
   monitors: Monitor[];
   tags: Tag[];
   scrapingMonitors: Set<string>;
-  onScrapeMonitors: (monitorIds: string[]) => Promise<void>;
+  onScrapeMonitors: (monitorIds: string[], onProgress?: (current: number, total: number) => void) => Promise<void>;
 }
 
 export function BulkScrapeActions({
