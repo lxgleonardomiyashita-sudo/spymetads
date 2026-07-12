@@ -16,6 +16,7 @@
 # USO
 #   export SB_TOKEN="sbp_..."          # https://supabase.com/dashboard/account/tokens
 #   export PROJECT_REF="gtjcxiwqemnofernzich"
+#   export FIRECRAWL_API_KEY="fc-..."  # opcional: configura o secret do fallback
 #   ./scripts/migrate-via-token.sh
 #
 set -euo pipefail
@@ -29,12 +30,12 @@ AUTH=(-H "Authorization: Bearer ${SB_TOKEN}")
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="${SCRIPT_DIR}/.."
 
-echo "==> [0/3] Verificando acesso ao projeto ${PROJECT_REF}..."
+echo "==> [0/4] Verificando acesso ao projeto ${PROJECT_REF}..."
 name=$(curl -sf "${AUTH[@]}" "${API}" | jq -r '.name')
 echo "    OK: projeto \"${name}\""
 
 echo ""
-echo "==> [1/3] Aplicando migracoes via Management API..."
+echo "==> [1/4] Aplicando migracoes via Management API..."
 count=0
 for f in $(ls -1 "${ROOT}/supabase/migrations"/*.sql | sort); do
   count=$((count + 1))
@@ -49,7 +50,7 @@ done
 echo "    OK: ${count} migracoes aplicadas."
 
 echo ""
-echo "==> [2/3] Gerando .env com a anon key do projeto novo..."
+echo "==> [2/4] Gerando .env com a anon key do projeto novo..."
 anon=$(curl -sf "${AUTH[@]}" "${API}/api-keys" | jq -r '.[] | select(.name=="anon") | .api_key')
 if [[ -z "${anon}" || "${anon}" == "null" ]]; then
   echo "AVISO: nao consegui obter a anon key automaticamente." >&2
@@ -64,12 +65,24 @@ EOF
 fi
 
 echo ""
-echo "==> [3/3] Deploy das edge functions..."
+echo "==> [3/4] Deploy das edge functions..."
 export SUPABASE_ACCESS_TOKEN="${SB_TOKEN}"
 cd "${ROOT}"
 npx --yes supabase functions deploy scrape-ad-library --project-ref "${PROJECT_REF}"
 npx --yes supabase functions deploy scheduler-hourly --project-ref "${PROJECT_REF}"
 echo "    OK: functions no ar."
+
+echo ""
+echo "==> [4/4] Secret FIRECRAWL_API_KEY (fallback de scraping)..."
+if [[ -n "${FIRECRAWL_API_KEY:-}" ]]; then
+  jq -n --arg v "${FIRECRAWL_API_KEY}" '[{name: "FIRECRAWL_API_KEY", value: $v}]' |
+    curl -sf -X POST "${API}/secrets" "${AUTH[@]}" \
+      -H "Content-Type: application/json" --data @-
+  echo "    OK: FIRECRAWL_API_KEY configurado no projeto."
+else
+  echo "    Pulado (FIRECRAWL_API_KEY nao definido). O app funciona sem ele;"
+  echo "    configure depois em Settings -> Edge Functions -> Secrets se quiser o fallback."
+fi
 
 echo ""
 echo "==> Migracao concluida!"
