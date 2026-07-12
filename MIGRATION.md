@@ -83,9 +83,18 @@ Gera `full.sql`, `data-only.sql` e `schema-only.sql` em `backups/<timestamp>/`.
 
 | Script | O que faz |
 |--------|-----------|
-| `scripts/setup-new-supabase.sh` | Cria toda a estrutura (migrações) num banco novo |
+| `scripts/migrate-via-token.sh` | **Faz tudo de uma vez** (tabelas + `.env` + deploy das functions) usando só o token `sbp_...` — sem senha do banco |
+| `scripts/setup-new-supabase.sh` | Cria toda a estrutura (migrações) num banco novo (via connection string) |
 | `scripts/copy-data.sh` | Copia os dados do banco antigo para o novo |
 | `scripts/backup-supabase.sh` | Gera backup completo (schema + dados) |
+
+### Atalho: migração completa com um comando
+
+```sh
+export SB_TOKEN="sbp_..."               # https://supabase.com/dashboard/account/tokens
+export PROJECT_REF="gtjcxiwqemnofernzich"
+./scripts/migrate-via-token.sh
+```
 
 ---
 
