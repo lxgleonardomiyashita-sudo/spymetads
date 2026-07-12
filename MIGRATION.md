@@ -86,3 +86,36 @@ Gera `full.sql`, `data-only.sql` e `schema-only.sql` em `backups/<timestamp>/`.
 | `scripts/setup-new-supabase.sh` | Cria toda a estrutura (migrações) num banco novo |
 | `scripts/copy-data.sh` | Copia os dados do banco antigo para o novo |
 | `scripts/backup-supabase.sh` | Gera backup completo (schema + dados) |
+
+---
+
+## Rodando de dentro do Claude Code na web
+
+O ambiente padrão ("Trusted") **bloqueia o Supabase na rede**. Para o Claude
+rodar a migração por você, edite o ambiente e libere estes domínios em
+**Network access → Custom → Allowed domains** (marque também "include default
+list of common package managers"):
+
+```
+api.supabase.com
+*.supabase.com
+*.supabase.co
+*.pooler.supabase.com
+```
+
+A mudança só vale para **sessões novas** — abra uma sessão nova depois de salvar.
+
+Com `api.supabase.com` liberado, dá para criar toda a estrutura **sem a senha do
+banco**, usando o access token (`sbp_...`) e a Management API do Supabase:
+
+```sh
+# aplica cada migração via Management API (nao precisa de senha do banco)
+for f in $(ls -1 supabase/migrations/*.sql | sort); do
+  curl -s -X POST "https://api.supabase.com/v1/projects/gtjcxiwqemnofernzich/database/query" \
+    -H "Authorization: Bearer $SB_TOKEN" \
+    -H "Content-Type: application/json" \
+    --data "$(jq -Rs '{query: .}' < "$f")"
+done
+```
+
+Deploy das edge functions e secrets também saem via token/CLI (ver Passo 4).
