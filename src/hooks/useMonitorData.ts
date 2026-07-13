@@ -205,22 +205,33 @@ export function useMonitorData(options: UseMonitorDataOptions = {}) {
     try {
       for (let i = 0; i < monitorsToScrape.length; i++) {
         const monitor = monitorsToScrape[i];
+        // Principal + bibliotecas extras
+        const libraryUrls = [monitor.ad_library_url, ...(monitor.extra_ad_library_urls ?? [])].filter(Boolean);
         try {
-          const { data, error } = await supabase.functions.invoke('scrape-ad-library', {
-            body: {
-              monitor_id: monitor.id,
-              url: monitor.ad_library_url,
-              // Em lote também precisa fallback para evitar falha massiva por 403
-              allow_firecrawl_fallback: true,
-            },
-          });
+          let monitorOk = false;
+          for (const libUrl of libraryUrls) {
+            const { data, error } = await supabase.functions.invoke('scrape-ad-library', {
+              body: {
+                monitor_id: monitor.id,
+                url: libUrl,
+                library_url: libUrl,
+                // Em lote também precisa fallback para evitar falha massiva por 403
+                allow_firecrawl_fallback: true,
+              },
+            });
 
-          if (error || !data?.success) {
-            failureCount += 1;
-            console.error(`Error scraping ${monitor.name}:`, error?.message || data?.error || 'Unknown error');
-          } else {
-            successCount += 1;
+            if (error || !data?.success) {
+              console.error(`Error scraping ${monitor.name} (${libUrl}):`, error?.message || data?.error || 'Unknown error');
+            } else if (libUrl === monitor.ad_library_url) {
+              monitorOk = true;
+            }
+
+            if (libraryUrls.length > 1) {
+              await new Promise((resolve) => setTimeout(resolve, 350));
+            }
           }
+          if (monitorOk) successCount += 1;
+          else failureCount += 1;
         } catch (error: any) {
           failureCount += 1;
           console.error(`Error scraping ${monitor.name}:`, error.message);
@@ -262,11 +273,25 @@ export function useMonitorData(options: UseMonitorDataOptions = {}) {
         body: {
           monitor_id: monitorId,
           url,
+          library_url: url,
           allow_firecrawl_fallback: true,
         },
       });
 
       if (error) throw error;
+
+      // Coleta também as bibliotecas extras (cada uma gera leitura própria)
+      const extraUrls = previousMonitor?.extra_ad_library_urls ?? [];
+      for (const extraUrl of extraUrls) {
+        await supabase.functions.invoke('scrape-ad-library', {
+          body: {
+            monitor_id: monitorId,
+            url: extraUrl,
+            library_url: extraUrl,
+            allow_firecrawl_fallback: true,
+          },
+        }).catch((e) => console.error(`Extra library scrape failed (${extraUrl}):`, e));
+      }
 
       if (data.success) {
         const newCount = data.ads_count;

@@ -21,6 +21,7 @@ export type Database = {
           ad_start_date: string | null
           ad_title: string | null
           collation_count: number
+          collation_history: Json
           created_at: string | null
           days_active: number | null
           first_seen_at: string | null
@@ -40,6 +41,7 @@ export type Database = {
           ad_start_date?: string | null
           ad_title?: string | null
           collation_count?: number
+          collation_history?: Json
           created_at?: string | null
           days_active?: number | null
           first_seen_at?: string | null
@@ -59,6 +61,7 @@ export type Database = {
           ad_start_date?: string | null
           ad_title?: string | null
           collation_count?: number
+          collation_history?: Json
           created_at?: string | null
           days_active?: number | null
           first_seen_at?: string | null
@@ -264,6 +267,7 @@ export type Database = {
           created_at: string
           error_message: string | null
           id: string
+          library_url: string | null
           monitor_id: string
           source_method: string
           status: string
@@ -274,6 +278,7 @@ export type Database = {
           created_at?: string
           error_message?: string | null
           id?: string
+          library_url?: string | null
           monitor_id: string
           source_method: string
           status: string
@@ -284,6 +289,7 @@ export type Database = {
           created_at?: string
           error_message?: string | null
           id?: string
+          library_url?: string | null
           monitor_id?: string
           source_method?: string
           status?: string

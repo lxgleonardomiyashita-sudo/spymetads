@@ -30,6 +30,7 @@ import { DistributionCharts } from "@/components/analytics/DistributionCharts";
 import { QuickStatsBar } from "@/components/analytics/QuickStatsBar";
 import { PeriodSelector } from "@/components/dashboard/PeriodSelector";
 import { PeakAnalysis } from "@/components/analytics/PeakAnalysis";
+import { LibraryDeepDive } from "@/components/analytics/LibraryDeepDive";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -886,6 +887,9 @@ function AnalisisContent() {
                 </CardContent>
               </Card>
             )}
+
+            {/* Análise profunda por biblioteca + top criativos escalados */}
+            <LibraryDeepDive />
 
             {/* Peak Analysis - Hourly & Daily */}
             <PeakAnalysis

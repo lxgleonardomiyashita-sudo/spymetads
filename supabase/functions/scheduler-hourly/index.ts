@@ -78,7 +78,7 @@ serve(async (req) => {
 
     const { data: monitors, error: monitorsError } = await supabase
       .from('monitors')
-      .select('id, name, ad_library_url, schedule_config, timezone')
+      .select('id, name, ad_library_url, extra_ad_library_urls, schedule_config, timezone')
       .eq('is_active', true);
 
     if (monitorsError) {
@@ -169,39 +169,48 @@ serve(async (req) => {
     for (const monitor of monitorsToRun) {
       console.log(`[${monitor.name}] Delegating to scrape-ad-library...`);
 
-      try {
-        const response = await fetch(scrapeUrl, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${supabaseServiceKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            monitor_id: monitor.id,
-            url: monitor.ad_library_url,
-            allow_firecrawl_fallback: false,
-          }),
-        });
+      // Principal + bibliotecas extras: cada URL vira uma leitura separada
+      const libraryUrls = [
+        monitor.ad_library_url,
+        ...(((monitor as Record<string, unknown>).extra_ad_library_urls as string[] | null) ?? []),
+      ].filter(Boolean);
 
-        const data = await response.json().catch(() => ({
-          success: false,
-          error: `Invalid scrape response (HTTP ${response.status})`,
-        }));
+      for (const libUrl of libraryUrls) {
+        try {
+          const response = await fetch(scrapeUrl, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${supabaseServiceKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              monitor_id: monitor.id,
+              url: libUrl,
+              library_url: libUrl,
+              allow_firecrawl_fallback: false,
+            }),
+          });
 
-        if (data.success) {
-          console.log(`[${monitor.name}] SUCCESS: ${data.ads_count} ads (status: ${data.reading_status}, anomaly: ${data.anomaly_detected})`);
-        } else {
-          console.error(`[${monitor.name}] FAILED: ${data.error}`);
+          const data = await response.json().catch(() => ({
+            success: false,
+            error: `Invalid scrape response (HTTP ${response.status})`,
+          }));
+
+          if (data.success) {
+            console.log(`[${monitor.name}] SUCCESS (${libUrl.slice(0, 60)}): ${data.ads_count} ads (status: ${data.reading_status}, anomaly: ${data.anomaly_detected})`);
+          } else {
+            console.error(`[${monitor.name}] FAILED (${libUrl.slice(0, 60)}): ${data.error}`);
+          }
+
+          results.push({ monitor: monitor.name, library_url: libUrl, ...data });
+        } catch (error) {
+          console.error(`[${monitor.name}] Exception:`, error);
+          results.push({ monitor: monitor.name, library_url: libUrl, success: false, error: String(error) });
         }
 
-        results.push({ monitor: monitor.name, ...data });
-      } catch (error) {
-        console.error(`[${monitor.name}] Exception:`, error);
-        results.push({ monitor: monitor.name, success: false, error: String(error) });
+        // Avoid burst requests that trigger blocking
+        await sleep(350);
       }
-
-      // Avoid burst requests that trigger blocking
-      await sleep(350);
     }
 
     const successful = results.filter((r) => Boolean(r.success)).length;

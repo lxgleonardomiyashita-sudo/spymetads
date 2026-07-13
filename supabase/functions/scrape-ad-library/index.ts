@@ -8,6 +8,7 @@ const corsHeaders = {
 };
 
 interface ScrapeRequest {
+  library_url?: string;
   monitor_id: string;
   url: string;
   allow_firecrawl_fallback?: boolean;
@@ -378,7 +379,7 @@ serve(async (req) => {
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
   try {
-    const { monitor_id, url, allow_firecrawl_fallback = false }: ScrapeRequest = await req.json();
+    const { monitor_id, url, allow_firecrawl_fallback = false, library_url }: ScrapeRequest = await req.json();
 
     if (!monitor_id || !url) {
       return new Response(
@@ -428,6 +429,7 @@ serve(async (req) => {
         source_method: mapSourceMethodToDb(fetchResult.sourceMethod),
         status: 'error',
         error_message: fetchResult.error || 'Failed to fetch Ad Library page',
+        library_url: library_url ?? null,
       });
 
       if (insertError) {
@@ -476,6 +478,7 @@ serve(async (req) => {
       source_method: mapSourceMethodToDb(fetchResult.sourceMethod),
       status: readingStatus,
       error_message: errorMessage,
+      library_url: library_url ?? null,
     });
 
     if (insertError) {
@@ -501,21 +504,44 @@ serve(async (req) => {
 
       if (ads.length > 0) {
         const now = new Date().toISOString();
-        const rows = ads.map(ad => ({
-          monitor_id,
-          ad_archive_id: ad.ad_archive_id,
-          collation_count: ad.collation_count,
-          ad_title: ad.ad_title,
-          ad_body: ad.ad_body,
-          link_url: ad.link_url,
-          ad_start_date: ad.ad_start_date,
-          is_active: ad.is_active,
-          platforms: ad.platforms,
-          last_seen_at: now,
-          days_active: ad.ad_start_date
-            ? Math.max(0, Math.floor((Date.now() - new Date(ad.ad_start_date).getTime()) / 86400000))
-            : 0,
-        }));
+
+        // Historico existente para acompanhar a evolucao das repeticoes
+        const { data: existingRows } = await supabase
+          .from('ad_details')
+          .select('ad_archive_id, collation_history')
+          .eq('monitor_id', monitor_id)
+          .in('ad_archive_id', ads.map(a => a.ad_archive_id));
+
+        const historyById = new Map<string, Array<{ t: string; c: number }>>(
+          (existingRows ?? []).map(r => [
+            r.ad_archive_id as string,
+            Array.isArray(r.collation_history) ? r.collation_history as Array<{ t: string; c: number }> : [],
+          ])
+        );
+
+        const rows = ads.map(ad => {
+          const history = historyById.get(ad.ad_archive_id) ?? [];
+          const last = history[history.length - 1];
+          if (!last || last.c !== ad.collation_count) {
+            history.push({ t: now, c: ad.collation_count });
+          }
+          return {
+            monitor_id,
+            ad_archive_id: ad.ad_archive_id,
+            collation_count: ad.collation_count,
+            collation_history: history.slice(-60),
+            ad_title: ad.ad_title,
+            ad_body: ad.ad_body,
+            link_url: ad.link_url,
+            ad_start_date: ad.ad_start_date,
+            is_active: ad.is_active,
+            platforms: ad.platforms,
+            last_seen_at: now,
+            days_active: ad.ad_start_date
+              ? Math.max(0, Math.floor((Date.now() - new Date(ad.ad_start_date).getTime()) / 86400000))
+              : 0,
+          };
+        });
 
         const { error: adsError } = await supabase
           .from('ad_details')
