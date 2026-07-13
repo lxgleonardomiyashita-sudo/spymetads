@@ -178,6 +178,14 @@ export function NewMonitorDialog({ open, onOpenChange, onSuccess, existingTags, 
       toast({ title: "Selecione ao menos uma janela", variant: "destructive" });
       return;
     }
+    if (!selectedGroupId) {
+      toast({
+        title: "Selecione um grupo",
+        description: "O grupo é obrigatório para organizar o monitor",
+        variant: "destructive",
+      });
+      return;
+    }
     if (!user) return;
 
     setIsLoading(true);
@@ -259,14 +267,22 @@ export function NewMonitorDialog({ open, onOpenChange, onSuccess, existingTags, 
             <p className="text-xs text-muted-foreground">Cole o link completo da pesquisa na Biblioteca de Anúncios do Meta</p>
           </div>
 
-          {/* Group */}
+          {/* Group (obrigatório) */}
+          {existingGroups.length === 0 && (
+            <div className="space-y-2">
+              <Label className="text-foreground">Grupo *</Label>
+              <p className="text-xs text-destructive bg-destructive/10 border border-destructive/30 rounded-md p-2">
+                O grupo é obrigatório e você ainda não tem nenhum. Crie um grupo na página{" "}
+                <strong>Grupos</strong> antes de cadastrar o monitor.
+              </p>
+            </div>
+          )}
           {existingGroups.length > 0 && (
             <div className="space-y-2">
-              <Label className="text-foreground">Grupo (opcional)</Label>
-              <Select value={selectedGroupId || "no-group"} onValueChange={(v) => setSelectedGroupId(v === "no-group" ? null : v)}>
-                <SelectTrigger className="bg-muted border-border"><SelectValue placeholder="Selecione um grupo" /></SelectTrigger>
+              <Label className="text-foreground">Grupo *</Label>
+              <Select value={selectedGroupId || ""} onValueChange={(v) => setSelectedGroupId(v)}>
+                <SelectTrigger className="bg-muted border-border"><SelectValue placeholder="Selecione um grupo (obrigatório)" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="no-group">Sem grupo</SelectItem>
                   {existingGroups.map((group) => (
                     <SelectItem key={group.id} value={group.id}>
                       <div className="flex items-center gap-2">

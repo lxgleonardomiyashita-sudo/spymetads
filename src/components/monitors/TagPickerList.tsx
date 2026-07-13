@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
-import { Check, Plus, Loader2 } from "lucide-react";
+import { Check, Plus, Loader2, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Tag, TagType } from "@/types/monitor";
 import { TAG_TYPE_CONFIG, TAG_TYPES, getTagColor } from "@/lib/tag-constants";
@@ -13,6 +13,8 @@ const SUGGESTED_TAGS: Partial<Record<TagType, string[]>> = {
   modelo_funil: ["VSL", "Quiz", "Presell + Quiz", "Presell + VSL", "TSL", "Página de Vendas", "App"],
   faixa_preco: ["Low ticket", "Mid ticket", "High ticket"],
 };
+
+const SUGGESTIONS_PREVIEW = 3;
 
 interface TagPickerListProps {
   allTags: Tag[];
@@ -27,6 +29,7 @@ export function TagPickerList({ allTags, selectedIds, onToggle, onCreate, busy }
   const [addingIn, setAddingIn] = useState<TagType | null>(null);
   const [newName, setNewName] = useState("");
   const [creating, setCreating] = useState(false);
+  const [expandedSuggestions, setExpandedSuggestions] = useState<Set<TagType>>(new Set());
 
   const term = search.trim().toLowerCase();
   const existingNames = new Set(allTags.map((t) => t.name.toLowerCase()));
@@ -45,7 +48,7 @@ export function TagPickerList({ allTags, selectedIds, onToggle, onCreate, busy }
   };
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       <Input
         placeholder="Buscar tag..."
         value={search}
@@ -53,36 +56,58 @@ export function TagPickerList({ allTags, selectedIds, onToggle, onCreate, busy }
         className="h-8 text-sm"
       />
 
-      <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
+      <div className="space-y-2 max-h-[340px] overflow-y-auto pr-1">
         {TAG_TYPES.map((type) => {
           const color = getTagColor(type);
           const tags = allTags
             .filter((t) => t.type === type)
             .filter((t) => !term || t.name.toLowerCase().includes(term));
-          const suggestions = (SUGGESTED_TAGS[type] ?? [])
+          const allSuggestions = (SUGGESTED_TAGS[type] ?? [])
             .filter((s) => !existingNames.has(s.toLowerCase()))
             .filter((s) => !term || s.toLowerCase().includes(term));
 
-          if (term && tags.length === 0 && suggestions.length === 0) return null;
+          if (term && tags.length === 0 && allSuggestions.length === 0) return null;
+
+          // Sem busca: sugestões ficam compactas (3 + botão "mais")
+          const showAll = term.length > 0 || expandedSuggestions.has(type);
+          const suggestions = showAll ? allSuggestions : allSuggestions.slice(0, SUGGESTIONS_PREVIEW);
+          const hiddenCount = allSuggestions.length - suggestions.length;
+
+          const selectedCount = allTags.filter(
+            (t) => t.type === type && selectedIds.has(t.id)
+          ).length;
 
           return (
-            <div key={type}>
+            <div
+              key={type}
+              className="rounded-lg border p-2"
+              style={{ borderColor: `${color}30`, backgroundColor: `${color}08` }}
+            >
               {/* Cabeçalho da categoria */}
               <div className="flex items-center gap-1.5 mb-1.5">
                 <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
                 <span className="text-[11px] font-semibold uppercase tracking-wide" style={{ color }}>
                   {TAG_TYPE_CONFIG[type].label}
                 </span>
+                {selectedCount > 0 && (
+                  <span
+                    className="text-[9px] font-bold px-1.5 rounded-full"
+                    style={{ backgroundColor: `${color}25`, color }}
+                  >
+                    {selectedCount}
+                  </span>
+                )}
                 <button
                   type="button"
                   onClick={() => {
                     setAddingIn(addingIn === type ? null : type);
                     setNewName("");
                   }}
-                  className="ml-auto text-muted-foreground hover:text-primary transition-colors"
-                  title={`Adicionar ${TAG_TYPE_CONFIG[type].label.toLowerCase()}`}
+                  className="ml-auto flex items-center gap-0.5 text-[10px] text-muted-foreground hover:text-primary transition-colors"
+                  title={`Criar tag de ${TAG_TYPE_CONFIG[type].label.toLowerCase()}`}
                 >
                   <Plus className="h-3 w-3" />
+                  nova
                 </button>
               </div>
 
@@ -126,20 +151,22 @@ export function TagPickerList({ allTags, selectedIds, onToggle, onCreate, busy }
                       disabled={busy}
                       onClick={() => onToggle(tag)}
                       className={cn(
-                        "inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full transition-all border",
-                        selected ? "font-medium" : "border-border text-muted-foreground hover:border-primary/50"
+                        "inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-full transition-all border",
+                        selected
+                          ? "font-semibold"
+                          : "border-border/60 bg-background/60 text-muted-foreground hover:border-primary/50"
                       )}
                       style={
                         selected
                           ? {
-                              backgroundColor: `${tagColor}22`,
+                              backgroundColor: `${tagColor}25`,
                               color: tagColor,
                               borderColor: tagColor,
                             }
                           : undefined
                       }
                     >
-                      {selected && <Check className="h-2.5 w-2.5" />}
+                      {selected && <Check className="h-3 w-3" />}
                       {tag.name}
                     </button>
                   );
@@ -151,7 +178,7 @@ export function TagPickerList({ allTags, selectedIds, onToggle, onCreate, busy }
                     type="button"
                     disabled={busy || creating}
                     onClick={() => handleCreate(name, type)}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border border-dashed border-border text-muted-foreground/70 hover:text-primary hover:border-primary/50 transition-colors"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 text-xs rounded-full border border-dashed border-border text-muted-foreground/60 hover:text-primary hover:border-primary/50 transition-colors"
                     title="Sugestão — clique para criar"
                   >
                     <Plus className="h-2.5 w-2.5" />
@@ -159,8 +186,23 @@ export function TagPickerList({ allTags, selectedIds, onToggle, onCreate, busy }
                   </button>
                 ))}
 
+                {hiddenCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setExpandedSuggestions((prev) => new Set(prev).add(type))
+                    }
+                    className="inline-flex items-center gap-0.5 px-2 py-1 text-[10px] rounded-full text-muted-foreground/60 hover:text-primary transition-colors"
+                  >
+                    <ChevronDown className="h-2.5 w-2.5" />
+                    mais {hiddenCount}
+                  </button>
+                )}
+
                 {tags.length === 0 && suggestions.length === 0 && (
-                  <span className="text-[10px] text-muted-foreground/60">Nenhuma tag — use o + acima</span>
+                  <span className="text-[10px] text-muted-foreground/60">
+                    Nenhuma tag — use "+ nova"
+                  </span>
                 )}
               </div>
             </div>

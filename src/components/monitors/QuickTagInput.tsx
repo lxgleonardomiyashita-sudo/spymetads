@@ -1,7 +1,8 @@
-import { useState, useRef, useEffect } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { TagChip } from "@/components/ui/tag-chip";
 import { TagPickerList } from "./TagPickerList";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Plus, X, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -28,18 +29,6 @@ export function QuickTagInput({
   const { toast } = useToast();
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
 
   const currentTagIds = new Set(currentTags.map((t) => t.id));
 
@@ -135,46 +124,42 @@ export function QuickTagInput({
   };
 
   return (
-    <div ref={containerRef} className="relative">
-      {/* Current Tags */}
-      <div className="flex flex-wrap gap-1 items-center">
-        {currentTags.map((tag) => (
-          <div key={tag.id} className="group relative">
-            <TagChip name={tag.name} type={tag.type} color={tag.color} size="sm" />
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                handleRemoveTag(tag.id);
-              }}
-              className="absolute -top-1 -right-1 h-3.5 w-3.5 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-              disabled={isLoading}
-            >
-              <X className="h-2 w-2" />
-            </button>
-          </div>
-        ))}
+    <div className="flex flex-wrap gap-1 items-center">
+      {currentTags.map((tag) => (
+        <div key={tag.id} className="group relative">
+          <TagChip name={tag.name} type={tag.type} color={tag.color} size="sm" />
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              handleRemoveTag(tag.id);
+            }}
+            className="absolute -top-1 -right-1 h-3.5 w-3.5 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+            disabled={isLoading}
+          >
+            <X className="h-2 w-2" />
+          </button>
+        </div>
+      ))}
 
-        <Button
-          variant="ghost"
-          size="sm"
-          className={cn(
-            "h-6 px-2 text-xs text-muted-foreground hover:text-primary",
-            compact && "h-5 px-1.5"
-          )}
-          onClick={(e) => {
-            e.stopPropagation();
-            setIsOpen(!isOpen);
-          }}
-          disabled={isLoading}
-        >
-          {isLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
-        </Button>
-      </div>
-
-      {/* Dropdown: lista visual por categoria */}
-      {isOpen && (
-        <div
-          className="absolute z-50 bottom-full left-0 mb-1 w-80 bg-popover border border-border rounded-lg shadow-lg p-3"
+      <Popover open={isOpen} onOpenChange={setIsOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            className={cn(
+              "h-6 px-2 text-xs text-muted-foreground hover:text-primary",
+              compact && "h-5 px-1.5"
+            )}
+            onClick={(e) => e.stopPropagation()}
+            disabled={isLoading}
+          >
+            {isLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent
+          align="start"
+          side="top"
+          className="w-[360px] max-w-[92vw] p-3"
           onClick={(e) => e.stopPropagation()}
         >
           <TagPickerList
@@ -184,8 +169,8 @@ export function QuickTagInput({
             onCreate={handleCreateAndAddTag}
             busy={isLoading}
           />
-        </div>
-      )}
+        </PopoverContent>
+      </Popover>
     </div>
   );
 }
