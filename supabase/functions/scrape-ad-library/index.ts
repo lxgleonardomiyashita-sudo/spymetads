@@ -283,6 +283,83 @@ function extractAdsCount(content: string): { count: number; found: boolean } {
   return { count: 0, found: false };
 }
 
+interface ExtractedAd {
+  ad_archive_id: string;
+  collation_count: number;
+  ad_title: string | null;
+  ad_body: string | null;
+  link_url: string | null;
+  ad_start_date: string | null;
+  is_active: boolean;
+  platforms: string[] | null;
+}
+
+/** Decode \uXXXX and \/ escapes found in embedded JSON strings. */
+function decodeJsonString(raw: string): string {
+  return raw
+    .replace(/\\u([0-9a-fA-F]{4})/g, (_, h) => String.fromCharCode(parseInt(h, 16)))
+    .replace(/\\\//g, '/')
+    .replace(/\\n/g, ' ')
+    .replace(/\\"/g, '"')
+    .replace(/<[^>]+>/g, '')
+    .trim();
+}
+
+/**
+ * Extract individual ads (with collation/repetition counts) from the
+ * Ad Library page's embedded JSON. Best-effort: Facebook's markup changes
+ * over time, so every field is optional except the archive id.
+ */
+function extractAdDetails(content: string): ExtractedAd[] {
+  const byId = new Map<string, ExtractedAd>();
+  const idPattern = /"(?:adArchiveID|ad_archive_id)"\s*:\s*"?(\d{6,})"?/g;
+
+  let match;
+  while ((match = idPattern.exec(content)) !== null) {
+    const id = match[1];
+    // Janela de contexto ao redor do id para capturar os campos do mesmo anuncio
+    const win = content.slice(match.index, match.index + 4000);
+
+    const collation = win.match(/"(?:collationCount|collation_count)"\s*:\s*(\d+)/);
+    const title = win.match(/"title"\s*:\s*"((?:[^"\\]|\\.){2,300}?)"/);
+    const body = win.match(/"(?:body"\s*:\s*\{\s*"markup"\s*:\s*\{\s*"__html|body)"\s*:\s*"((?:[^"\\]|\\.){2,1000}?)"/);
+    const link = win.match(/"(?:linkUrl|link_url)"\s*:\s*"((?:[^"\\]|\\.)+?)"/);
+    const start = win.match(/"(?:startDate|start_date)"\s*:\s*(\d{9,13})/);
+    const active = win.match(/"(?:isActive|is_active)"\s*:\s*(true|false)/);
+    const platforms = win.match(/"(?:publisherPlatform|publisher_platform)"\s*:\s*\[([^\]]*)\]/);
+
+    const startMs = start ? parseInt(start[1], 10) * (start[1].length <= 10 ? 1000 : 1) : null;
+
+    const ad: ExtractedAd = {
+      ad_archive_id: id,
+      collation_count: collation ? Math.max(1, parseInt(collation[1], 10)) : 1,
+      ad_title: title ? decodeJsonString(title[1]).slice(0, 300) : null,
+      ad_body: body ? decodeJsonString(body[1]).slice(0, 1000) : null,
+      link_url: link ? decodeJsonString(link[1]).slice(0, 500) : null,
+      ad_start_date: startMs ? new Date(startMs).toISOString() : null,
+      is_active: active ? active[1] === 'true' : true,
+      platforms: platforms
+        ? platforms[1].split(',').map(p => decodeJsonString(p.replace(/"/g, ''))).filter(Boolean)
+        : null,
+    };
+
+    const existing = byId.get(id);
+    if (!existing || ad.collation_count > existing.collation_count) {
+      byId.set(id, {
+        ...ad,
+        ad_title: ad.ad_title ?? existing?.ad_title ?? null,
+        ad_body: ad.ad_body ?? existing?.ad_body ?? null,
+        link_url: ad.link_url ?? existing?.link_url ?? null,
+        ad_start_date: ad.ad_start_date ?? existing?.ad_start_date ?? null,
+      });
+    }
+  }
+
+  return [...byId.values()]
+    .sort((a, b) => b.collation_count - a.collation_count)
+    .slice(0, 200);
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -414,6 +491,44 @@ serve(async (req) => {
       );
     }
 
+    // Best-effort: extrai anuncios individuais (com repeticoes) e salva em ad_details.
+    // Nunca derruba a leitura principal se falhar.
+    let adsExtracted = 0;
+    try {
+      const ads = extractAdDetails(content);
+      adsExtracted = ads.length;
+      console.log(`Extracted ${ads.length} individual ads`);
+
+      if (ads.length > 0) {
+        const now = new Date().toISOString();
+        const rows = ads.map(ad => ({
+          monitor_id,
+          ad_archive_id: ad.ad_archive_id,
+          collation_count: ad.collation_count,
+          ad_title: ad.ad_title,
+          ad_body: ad.ad_body,
+          link_url: ad.link_url,
+          ad_start_date: ad.ad_start_date,
+          is_active: ad.is_active,
+          platforms: ad.platforms,
+          last_seen_at: now,
+          days_active: ad.ad_start_date
+            ? Math.max(0, Math.floor((Date.now() - new Date(ad.ad_start_date).getTime()) / 86400000))
+            : 0,
+        }));
+
+        const { error: adsError } = await supabase
+          .from('ad_details')
+          .upsert(rows, { onConflict: 'monitor_id,ad_archive_id' });
+
+        if (adsError) {
+          console.error('Failed to upsert ad_details:', adsError);
+        }
+      }
+    } catch (adErr) {
+      console.error('Ad details extraction failed (non-fatal):', adErr);
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
@@ -422,6 +537,7 @@ serve(async (req) => {
         anomaly_detected: anomalyDetected,
         reading_status: readingStatus,
         source_method: fetchResult.sourceMethod,
+        ads_extracted: adsExtracted,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

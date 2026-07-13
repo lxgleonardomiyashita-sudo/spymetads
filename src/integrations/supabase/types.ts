@@ -20,6 +20,7 @@ export type Database = {
           ad_body: string | null
           ad_start_date: string | null
           ad_title: string | null
+          collation_count: number
           created_at: string | null
           days_active: number | null
           first_seen_at: string | null
@@ -38,6 +39,7 @@ export type Database = {
           ad_body?: string | null
           ad_start_date?: string | null
           ad_title?: string | null
+          collation_count?: number
           created_at?: string | null
           days_active?: number | null
           first_seen_at?: string | null
@@ -56,6 +58,7 @@ export type Database = {
           ad_body?: string | null
           ad_start_date?: string | null
           ad_title?: string | null
+          collation_count?: number
           created_at?: string | null
           days_active?: number | null
           first_seen_at?: string | null

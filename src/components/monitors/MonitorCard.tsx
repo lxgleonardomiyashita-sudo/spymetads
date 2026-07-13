@@ -1,6 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { TagChip } from "@/components/ui/tag-chip";
 import { QuickTagInput } from "./QuickTagInput";
+import { ScaledAdsSection } from "./ScaledAdsSection";
 import { TestStatusSelector } from "./TestStatusSelector";
 import { WebsiteUrlInput } from "./WebsiteUrlInput";
 import {
@@ -286,6 +287,9 @@ export function MonitorCard({
           </p>
         )}
       </div>
+
+      {/* Anúncios mais escalados (repetições) */}
+      <ScaledAdsSection monitorId={monitor.id} monitorName={monitor.name} />
 
       {/* Test Status Selector */}
       <div className="mt-2">
