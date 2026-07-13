@@ -1,14 +1,13 @@
 import { useState, useRef, useEffect } from "react";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { TagChip } from "@/components/ui/tag-chip";
-import { Plus, X, Check, Loader2 } from "lucide-react";
+import { TagPickerList } from "./TagPickerList";
+import { Plus, X, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import type { Tag, TagType } from "@/types/monitor";
-import { TAG_TYPE_CONFIG, TAG_TYPES, getTagColor } from "@/lib/tag-constants";
 
 interface QuickTagInputProps {
   monitorId: string;
@@ -28,10 +27,7 @@ export function QuickTagInput({
   const { user } = useAuth();
   const { toast } = useToast();
   const [isOpen, setIsOpen] = useState(false);
-  const [searchTerm, setSearchTerm] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [selectedType, setSelectedType] = useState<TagType>('nicho');
-  const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Close dropdown when clicking outside
@@ -45,33 +41,28 @@ export function QuickTagInput({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const currentTagIds = new Set(currentTags.map(t => t.id));
-  
-  // Filter tags not already assigned to this monitor
-  const availableTags = allTags.filter(t => !currentTagIds.has(t.id));
-  
-  // Filter by search term
-  const filteredTags = availableTags.filter(t => 
-    t.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const currentTagIds = new Set(currentTags.map((t) => t.id));
 
-  // Popular tags (most used across all monitors)
-  const popularTags = availableTags.slice(0, 5);
-
-  const handleAddTag = async (tagId: string) => {
+  const handleToggleTag = async (tag: Tag) => {
     setIsLoading(true);
     try {
-      const { error } = await supabase
-        .from('monitor_tags')
-        .insert({ monitor_id: monitorId, tag_id: tagId });
-
-      if (error) throw error;
-      
+      if (currentTagIds.has(tag.id)) {
+        const { error } = await supabase
+          .from("monitor_tags")
+          .delete()
+          .eq("monitor_id", monitorId)
+          .eq("tag_id", tag.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from("monitor_tags")
+          .insert({ monitor_id: monitorId, tag_id: tag.id });
+        if (error) throw error;
+      }
       onTagsUpdated();
-      setSearchTerm("");
     } catch (error: any) {
       toast({
-        title: "Erro ao adicionar tag",
+        title: "Erro ao atualizar tags",
         description: error.message,
         variant: "destructive",
       });
@@ -84,13 +75,11 @@ export function QuickTagInput({
     setIsLoading(true);
     try {
       const { error } = await supabase
-        .from('monitor_tags')
+        .from("monitor_tags")
         .delete()
-        .eq('monitor_id', monitorId)
-        .eq('tag_id', tagId);
-
+        .eq("monitor_id", monitorId)
+        .eq("tag_id", tagId);
       if (error) throw error;
-      
       onTagsUpdated();
     } catch (error: any) {
       toast({
@@ -103,27 +92,20 @@ export function QuickTagInput({
     }
   };
 
-  const handleCreateAndAddTag = async () => {
-    if (!searchTerm.trim() || !user) return;
-    
+  const handleCreateAndAddTag = async (name: string, type: TagType) => {
+    if (!user) return;
     setIsLoading(true);
     try {
-      // Create tag
       const { data: newTag, error: createError } = await supabase
-        .from('tags')
-        .insert({
-          user_id: user.id,
-          name: searchTerm.trim(),
-          type: selectedType,
-        })
+        .from("tags")
+        .insert({ user_id: user.id, name, type })
         .select()
         .single();
 
       if (createError) throw createError;
 
-      // Link to monitor
       const { error: linkError } = await supabase
-        .from('monitor_tags')
+        .from("monitor_tags")
         .insert({ monitor_id: monitorId, tag_id: newTag.id });
 
       if (linkError) throw linkError;
@@ -132,9 +114,7 @@ export function QuickTagInput({
         title: "Tag criada e adicionada!",
         description: `"${newTag.name}" foi criada e vinculada ao monitor`,
       });
-
       onTagsUpdated();
-      setSearchTerm("");
     } catch (error: any) {
       if (error.message?.includes("duplicate")) {
         toast({
@@ -154,17 +134,18 @@ export function QuickTagInput({
     }
   };
 
-  const exactMatch = allTags.find(t => t.name.toLowerCase() === searchTerm.toLowerCase());
-
   return (
     <div ref={containerRef} className="relative">
       {/* Current Tags */}
       <div className="flex flex-wrap gap-1 items-center">
-        {currentTags.map(tag => (
+        {currentTags.map((tag) => (
           <div key={tag.id} className="group relative">
             <TagChip name={tag.name} type={tag.type} color={tag.color} size="sm" />
             <button
-              onClick={(e) => { e.stopPropagation(); handleRemoveTag(tag.id); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleRemoveTag(tag.id);
+              }}
               className="absolute -top-1 -right-1 h-3.5 w-3.5 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
               disabled={isLoading}
             >
@@ -172,7 +153,7 @@ export function QuickTagInput({
             </button>
           </div>
         ))}
-        
+
         <Button
           variant="ghost"
           size="sm"
@@ -180,100 +161,29 @@ export function QuickTagInput({
             "h-6 px-2 text-xs text-muted-foreground hover:text-primary",
             compact && "h-5 px-1.5"
           )}
-          onClick={(e) => { e.stopPropagation(); setIsOpen(!isOpen); }}
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsOpen(!isOpen);
+          }}
           disabled={isLoading}
         >
           {isLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
         </Button>
       </div>
 
-      {/* Dropdown */}
+      {/* Dropdown: lista visual por categoria */}
       {isOpen && (
-        <div 
-          className="absolute z-50 top-full left-0 mt-1 w-64 bg-popover border border-border rounded-lg shadow-lg p-2 space-y-2"
+        <div
+          className="absolute z-50 bottom-full left-0 mb-1 w-80 bg-popover border border-border rounded-lg shadow-lg p-3"
           onClick={(e) => e.stopPropagation()}
         >
-          {/* Search Input */}
-          <Input
-            ref={inputRef}
-            placeholder="Buscar ou criar tag..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="h-8 text-sm"
-            autoFocus
+          <TagPickerList
+            allTags={allTags}
+            selectedIds={currentTagIds}
+            onToggle={handleToggleTag}
+            onCreate={handleCreateAndAddTag}
+            busy={isLoading}
           />
-
-          {/* Type selector for new tags */}
-          {searchTerm && !exactMatch && (
-            <div className="flex gap-1 flex-wrap">
-              {TAG_TYPES.map(type => (
-                <button
-                  key={type}
-                  onClick={() => setSelectedType(type)}
-                  className={cn(
-                    "text-[10px] px-2 py-0.5 rounded-full transition-all"
-                  )}
-                  style={{
-                    backgroundColor: `${getTagColor(type)}20`,
-                    color: getTagColor(type),
-                    ...(selectedType === type ? { boxShadow: `0 0 0 1px ${getTagColor(type)}` } : {}),
-                  }}
-                >
-                  {TAG_TYPE_CONFIG[type].label}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Suggestions / Results */}
-          <div className="max-h-32 overflow-y-auto space-y-1">
-            {/* Create new tag option */}
-            {searchTerm && !exactMatch && (
-              <button
-                onClick={handleCreateAndAddTag}
-                className="w-full flex items-center gap-2 p-1.5 rounded hover:bg-muted text-left text-sm"
-                disabled={isLoading}
-              >
-                <Plus className="h-3.5 w-3.5 text-primary" />
-                <span>Criar</span>
-                <TagChip name={searchTerm} type={selectedType} color={getTagColor(selectedType)} size="sm" />
-              </button>
-            )}
-
-            {/* Filtered tags */}
-            {filteredTags.length > 0 ? (
-              filteredTags.slice(0, 8).map(tag => (
-                <button
-                  key={tag.id}
-                  onClick={() => handleAddTag(tag.id)}
-                  className="w-full flex items-center gap-2 p-1.5 rounded hover:bg-muted text-left"
-                  disabled={isLoading}
-                >
-                  <Check className="h-3.5 w-3.5 text-transparent" />
-                  <TagChip name={tag.name} type={tag.type} color={tag.color} size="sm" />
-                </button>
-              ))
-            ) : !searchTerm && popularTags.length > 0 ? (
-              <>
-                <p className="text-[10px] text-muted-foreground px-1">Sugestões:</p>
-                {popularTags.map(tag => (
-                  <button
-                    key={tag.id}
-                    onClick={() => handleAddTag(tag.id)}
-                    className="w-full flex items-center gap-2 p-1.5 rounded hover:bg-muted text-left"
-                    disabled={isLoading}
-                  >
-                    <Check className="h-3.5 w-3.5 text-transparent" />
-                    <TagChip name={tag.name} type={tag.type} color={tag.color} size="sm" />
-                  </button>
-                ))}
-              </>
-            ) : searchTerm && filteredTags.length === 0 && exactMatch ? (
-              <p className="text-xs text-muted-foreground text-center py-2">
-                Tag já adicionada
-              </p>
-            ) : null}
-          </div>
         </div>
       )}
     </div>

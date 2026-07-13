@@ -18,14 +18,9 @@ import {
 import { Loader2, ExternalLink, X, Plus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { TagChip } from "@/components/ui/tag-chip";
-
-interface Tag {
-  id: string;
-  name: string;
-  type: string;
-  color?: string | null;
-}
+import { useAuth } from "@/contexts/AuthContext";
+import { TagPickerList } from "./TagPickerList";
+import type { Tag, TagType } from "@/types/monitor";
 
 interface Group {
   id: string;
@@ -67,7 +62,9 @@ export function EditMonitorDialog({
   onSuccess,
 }: EditMonitorDialogProps) {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [localTags, setLocalTags] = useState<Tag[]>(allTags);
   const [name, setName] = useState(monitor.name);
   const [url, setUrl] = useState(monitor.ad_library_url);
   const [groupId, setGroupId] = useState<string>(monitor.group_id || "none");
@@ -77,6 +74,10 @@ export function EditMonitorDialog({
   const [extraAdLibraryUrls, setExtraAdLibraryUrls] = useState<string[]>(monitor.extra_ad_library_urls || []);
   const [websiteUrl, setWebsiteUrl] = useState(monitor.website_url || "");
   const [extraWebsiteUrls, setExtraWebsiteUrls] = useState<string[]>(monitor.extra_website_urls || []);
+
+  useEffect(() => {
+    setLocalTags(allTags);
+  }, [allTags]);
 
   useEffect(() => {
     setName(monitor.name);
@@ -95,6 +96,29 @@ export function EditMonitorDialog({
         ? prev.filter(id => id !== tagId)
         : [...prev, tagId]
     );
+  };
+
+  // Cria a tag no banco na hora e já deixa selecionada
+  const handleCreateTag = async (tagName: string, type: TagType) => {
+    if (!user) return;
+    try {
+      const { data: newTag, error } = await supabase
+        .from("tags")
+        .insert({ user_id: user.id, name: tagName, type })
+        .select()
+        .single();
+      if (error) throw error;
+      setLocalTags(prev => [...prev, newTag as unknown as Tag]);
+      setSelectedTags(prev => [...prev, newTag.id]);
+    } catch (error: any) {
+      toast({
+        title: error.message?.includes("duplicate") ? "Tag já existe" : "Erro ao criar tag",
+        description: error.message?.includes("duplicate")
+          ? "Use a tag existente da lista"
+          : error.message,
+        variant: "destructive",
+      });
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -327,26 +351,13 @@ export function EditMonitorDialog({
 
           <div className="space-y-2">
             <Label className="text-foreground">Tags</Label>
-            <div className="flex flex-wrap gap-2 p-3 bg-muted rounded-md border border-border min-h-[60px]">
-              {allTags.map((tag) => (
-                <button
-                  key={tag.id}
-                  type="button"
-                  onClick={() => toggleTag(tag.id)}
-                  className={`px-2.5 py-1 text-xs rounded-full transition-all ${
-                    selectedTags.includes(tag.id)
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-background border border-border text-muted-foreground hover:border-primary/50"
-                  }`}
-                >
-                  {tag.name}
-                </button>
-              ))}
-              {allTags.length === 0 && (
-                <span className="text-xs text-muted-foreground">
-                  Nenhuma tag disponível
-                </span>
-              )}
+            <div className="p-3 bg-muted rounded-md border border-border">
+              <TagPickerList
+                allTags={localTags}
+                selectedIds={new Set(selectedTags)}
+                onToggle={(tag) => toggleTag(tag.id)}
+                onCreate={handleCreateTag}
+              />
             </div>
           </div>
 
